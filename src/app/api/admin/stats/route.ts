@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 export async function GET(req: NextRequest): Promise<Response> {
   try {
     await requireStaff(req);
-    const { getAdminDb } = await import("@/lib/firebase/admin");
+    const { getAdminDb, getAdminRtdb } = await import("@/lib/firebase/admin");
     const db = getAdminDb();
     const since = Date.now() - 7 * 24 * 60 * 60 * 1000;
 
@@ -19,7 +19,7 @@ export async function GET(req: NextRequest): Promise<Response> {
         db.collection("confessions").where("status", "==", "REJECTED").count().get(),
         db.collection("comments").count().get(),
         db.collection("reports").where("status", "==", "OPEN").count().get(),
-        db.collection("users").count().get(),
+        getAdminRtdb().ref("users").get(),
         db.collection("confessions").where("createdAt", ">", since).count().get(),
       ]);
 
@@ -30,7 +30,7 @@ export async function GET(req: NextRequest): Promise<Response> {
       rejectedConfessions: rejected.data().count,
       totalComments: totalComments.data().count,
       openReports: openReports.data().count,
-      totalUsers: users.data().count,
+      totalUsers: users.numChildren(),
       last7DaysConfessions: recentConf.data().count,
     });
   } catch (err) {

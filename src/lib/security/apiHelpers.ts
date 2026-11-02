@@ -1,5 +1,5 @@
 import type { NextRequest } from "next/server";
-import { getAdminAuth, getAdminDb } from "@/lib/firebase/admin";
+import { getAdminAuth, getAdminRtdb } from "@/lib/firebase/admin";
 import { normalizeUserRole, rank } from "@/lib/auth/roles";
 import type { UserRole } from "@/types";
 
@@ -50,8 +50,8 @@ export interface AuthContext {
 }
 
 /**
- * Signed-in + baca role dari database (users/{uid}.role).
- * Akun email yang belum punya dokumen otomatis dibuat dengan role "user",
+ * Signed-in + baca role dari Realtime Database (users/{uid}/role).
+ * Akun email yang belum tercatat otomatis dibuat dengan role "user",
  * jadi akun yang mendaftar langsung muncul di database untuk di-acc.
  * Role dibaca ulang tiap request → perubahan di database langsung berlaku.
  */
@@ -64,17 +64,18 @@ async function getAuthContext(req: NextRequest): Promise<AuthContext> {
       "unauthenticated"
     );
   }
-  const ref = getAdminDb().collection("users").doc(verified.uid);
+  const ref = getAdminRtdb().ref(`users/${verified.uid}`);
   const snap = await ref.get();
   let role: UserRole = "user";
-  if (!snap.exists) {
+  if (!snap.exists()) {
     if (verified.email) {
       await ensureUserDoc(verified.uid, verified.email);
     }
   } else {
-    role = normalizeUserRole(snap.data()?.role);
-    if (verified.email && snap.data()?.email !== verified.email) {
-      await ref.set({ email: verified.email }, { merge: true });
+    const data = snap.val() as Record<string, unknown>;
+    role = normalizeUserRole(data?.role);
+    if (verified.email && data?.email !== verified.email) {
+      await ref.update({ email: verified.email });
     }
   }
   return { uid: verified.uid, email: verified.email, role };
@@ -109,8 +110,8 @@ export async function requireOwner(req: NextRequest): Promise<AuthContext> {
 }
 
 export async function assertNotBlocked(uid: string): Promise<void> {
-  const userDoc = await getAdminDb().collection("users").doc(uid).get();
-  if (userDoc.exists && userDoc.data()?.isBlocked === true) {
+  const snap = await getAdminRtdb().ref(`users/${uid}/isBlocked`).get();
+  if (snap.val() === true) {
     throw new ApiError(
       403,
       "Akunmu diblokir karena melanggar aturan komunitas.",
@@ -120,25 +121,26 @@ export async function assertNotBlocked(uid: string): Promise<void> {
 }
 
 /**
- * Membuat dokumen users/{uid} dengan role default "user" bila belum ada.
- * Bila sudah ada, role TIDAK disentuh (hanya melengkapi email kalau kosong).
+ * Membuat data akun di Realtime Database (users/{uid}) dengan role default
+ * "user" bila belum ada. Bila sudah ada, role TIDAK disentuh (hanya
+ * melengkapi email kalau kosong).
  */
 export async function ensureUserDoc(
   uid: string,
   email?: string | null
 ): Promise<string> {
-  const db = getAdminDb();
-  const ref = db.collection("users").doc(uid);
+  const ref = getAdminRtdb().ref(`users/${uid}`);
   const snap = await ref.get();
-  if (snap.exists) {
-    if (email && !snap.data()?.email) {
-      await ref.set({ email }, { merge: true });
+  if (snap.exists()) {
+    const data = snap.val() as Record<string, unknown>;
+    if (email && !data?.email) {
+      await ref.update({ email });
     }
-    return normalizeUserRole(snap.data()?.role);
+    return normalizeUserRole(data?.role);
   }
   await ref.set({
     uid,
-    ...(email ? { email } : {}),
+    email: email ?? "",
     role: "user",
     createdAt: Date.now(),
     isBlocked: false,

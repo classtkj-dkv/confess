@@ -115,7 +115,7 @@ export function AdminClient() {
         <EmptyState
           icon="🔐"
           title="Akses admin diperlukan"
-          description="Dashboard hanya untuk akun dengan role admin/owner yang diverifikasi server dari database. Pendaftaran baru selalu ber-role user biasa — role naik setelah di-acc lewat database."
+          description="Dashboard hanya untuk akun dengan role admin/owner yang diverifikasi server dari database. Pendaftaran baru selalu ber-role user biasa — role naik setelah di-acc lewat Realtime Database."
         />
         {/* Daftar manual: selalu ber-role user biasa */}
         <AuthAccountPanel />
@@ -703,7 +703,7 @@ function UserRows({
     <section className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
         <h2 className="text-base font-bold text-ink">Pengguna</h2>
-        <span className="badge">role diubah di database (users/uid → role)</span>
+        <span className="badge">role diubah di Realtime Database (users → uid → role)</span>
         <label className="ml-auto flex items-center gap-2 text-xs text-muted">
           <input
             type="checkbox"

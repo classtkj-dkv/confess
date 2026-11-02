@@ -7,6 +7,7 @@ import {
   getAuth,
   type Auth,
 } from "firebase-admin/auth";
+import { getDatabase, type Database } from "firebase-admin/database";
 
 let cachedApp: App | null = null;
 
@@ -58,6 +59,7 @@ export function getAdminApp(): App {
       privateKey: serviceAccount.privateKey.replace(/\\n/g, "\n"),
     }),
     projectId: serviceAccount.projectId,
+    databaseURL: process.env.NEXT_PUBLIC_FIREBASE_DATABASE_URL || undefined,
   });
 
   return cachedApp;
@@ -65,6 +67,16 @@ export function getAdminApp(): App {
 
 export function getAdminDb(): Firestore {
   return getFirestore(getAdminApp());
+}
+
+/** Realtime Database — tempat data akun (users/{uid}) dan role disimpan. */
+export function getAdminRtdb(): Database {
+  if (!process.env.NEXT_PUBLIC_FIREBASE_DATABASE_URL) {
+    throw new Error(
+      "NEXT_PUBLIC_FIREBASE_DATABASE_URL belum diisi (URL Realtime Database dari Firebase Console)."
+    );
+  }
+  return getDatabase(getAdminApp());
 }
 
 export function getAdminAuth(): Auth {

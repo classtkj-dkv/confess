@@ -1,6 +1,5 @@
 import type { NextRequest } from "next/server";
-import { FieldValue } from "firebase-admin/firestore";
-import { getAdminDb } from "@/lib/firebase/admin";
+import { getAdminRtdb } from "@/lib/firebase/admin";
 import {
   ApiError,
   assertNotBlocked,
@@ -17,7 +16,7 @@ export const dynamic = "force-dynamic";
  * Dipanggil setelah daftar/masuk dengan email:
  * memastikan dokumen users/{uid} ada dengan role default "user" (bila baru).
  * Role TIDAK PERNAH bisa diatur dari sini — role hanya diubah langsung
- * di database (Firebase Console → Firestore → users/{uid}.role).
+ * di database (Firebase Console → Realtime Database → users → {uid} → role).
  */
 export async function POST(req: NextRequest): Promise<Response> {
   try {
@@ -36,13 +35,9 @@ export async function POST(req: NextRequest): Promise<Response> {
       40
     );
     if (displayName) {
-      await getAdminDb()
-        .collection("users")
-        .doc(uid)
-        .set(
-          { displayName, profileUpdatedAt: FieldValue.serverTimestamp() },
-          { merge: true }
-        );
+      await getAdminRtdb()
+        .ref(`users/${uid}`)
+        .update({ displayName, profileUpdatedAt: Date.now() });
     }
 
     return Response.json({ ok: true, role });

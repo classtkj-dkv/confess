@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
 import { errorResponse, requireStaff } from "@/lib/security/apiHelpers";
-import { getAdminDb } from "@/lib/firebase/admin";
+import { getAdminDb, getAdminRtdb } from "@/lib/firebase/admin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -147,17 +147,15 @@ export async function POST(req: NextRequest): Promise<Response> {
         if (!/^[a-zA-Z0-9_-]{17,28}$/.test(body.id)) {
           return Response.json({ error: "UID tidak valid." }, { status: 400 });
         }
-        const targetUser = await db.collection("users").doc(body.id).get();
-        if (targetUser.data()?.role === "owner") {
+        const userRef = getAdminRtdb().ref(`users/${body.id}`);
+        const targetUser = await userRef.get();
+        if (String(targetUser.val()?.role ?? "").toLowerCase() === "owner") {
           return Response.json(
             { error: "Owner tidak bisa diblokir." },
             { status: 403 }
           );
         }
-        await db.collection("users").doc(body.id).set(
-          { uid: body.id, isBlocked: true },
-          { merge: true }
-        );
+        await userRef.update({ uid: body.id, isBlocked: true });
         message = "Akun diblokir.";
         break;
       }
@@ -165,10 +163,9 @@ export async function POST(req: NextRequest): Promise<Response> {
         if (!/^[a-zA-Z0-9_-]{17,28}$/.test(body.id)) {
           return Response.json({ error: "UID tidak valid." }, { status: 400 });
         }
-        await db.collection("users").doc(body.id).set(
-          { uid: body.id, isBlocked: false },
-          { merge: true }
-        );
+        await getAdminRtdb()
+          .ref(`users/${body.id}`)
+          .update({ uid: body.id, isBlocked: false });
         message = "Blokir dilepas.";
         break;
       }

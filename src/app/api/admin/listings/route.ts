@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
 import { errorResponse, requireStaff } from "@/lib/security/apiHelpers";
-import { getAdminDb } from "@/lib/firebase/admin";
+import { getAdminDb, getAdminRtdb } from "@/lib/firebase/admin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -41,22 +41,22 @@ export async function GET(req: NextRequest): Promise<Response> {
     }
 
     if (resource === "users") {
-      const search = (url.searchParams.get("blocked") ?? "") === "true";
-      let queryRef = db.collection("users").orderBy("createdAt", "desc");
-      if (search) {
-        queryRef = queryRef.where("isBlocked", "==", true).orderBy("createdAt", "desc") as typeof queryRef;
-      }
-      const snap = await queryRef.offset((page - 1) * pageSize).limit(pageSize).get();
-      const items = snap.docs.map((d) => ({
-        uid: d.id,
-        email: String((d.data() as Record<string, unknown>).email ?? ""),
-        role: String((d.data() as Record<string, unknown>).role ?? "user"),
-        isBlocked: (d.data() as Record<string, unknown>).isBlocked === true,
-        createdAt:
-          typeof d.data().createdAt === "number"
-            ? d.data().createdAt
-            : Date.now(),
+      const onlyBlocked = (url.searchParams.get("blocked") ?? "") === "true";
+      const snap = await getAdminRtdb().ref("users").get();
+      const all = Object.entries(
+        (snap.val() ?? {}) as Record<string, Record<string, unknown>>
+      ).map(([uid, d]) => ({
+        uid,
+        email: String(d?.email ?? ""),
+        displayName: String(d?.displayName ?? ""),
+        role: String(d?.role ?? "user"),
+        isBlocked: d?.isBlocked === true,
+        createdAt: typeof d?.createdAt === "number" ? d.createdAt : 0,
       }));
+      const list = (onlyBlocked ? all.filter((u) => u.isBlocked) : all).sort(
+        (x, y) => y.createdAt - x.createdAt
+      );
+      const items = list.slice((page - 1) * pageSize, page * pageSize);
       return Response.json({ items, page, pageSize });
     }
 

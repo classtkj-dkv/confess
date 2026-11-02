@@ -4,9 +4,9 @@ import type { UserRole } from "@/types";
  * Role ladder — owner (paling tinggi) > admin > user.
  * Dipakai bersama oleh server (API routes) dan klien.
  *
- * SUMBER KEBENARAN: field `role` di dokumen Firestore `users/{uid}`.
+ * SUMBER KEBENARAN: field `role` di Realtime Database `users/{uid}`.
  * Mengubah role = edit field itu langsung di Firebase Console
- * (Firestore Database → users → pilih akun → role). Berlaku seketika.
+ * (Realtime Database → Data → users → pilih akun → role). Berlaku seketika.
  */
 export const ROLE_RANK: Record<UserRole, number> = {
   user: 0,

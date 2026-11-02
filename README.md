@@ -53,33 +53,30 @@ spesifikasi di prompt.txt — server men-set field `status`, counters
 | `admin` | Moderasi confession/komentar, tangani laporan, blokir `user` |
 | `user` | Confession, komentar, reaksi, laporan (default pendaftar baru) |
 
-### Cara kerja role (diatur lewat database)
+### Cara kerja role (diatur lewat Realtime Database)
 
-- Daftar di website → akun otomatis dibuat di Firestore `users/{uid}` dengan
-  `role: "user"` (plus `email`, `createdAt`, `isBlocked`).
-- **Satu-satunya sumber role = field `role` di dokumen `users/{uid}`.** Tidak
-  ada lagi custom claim, endpoint `/api/admin/roles`, maupun
-  `/api/admin/setup`.
-- Untuk meng-acc / mengubah role: buka **Firebase Console → Firestore Database
-  → collection `users` →** pilih akun (cari lewat email) **→ ubah field
-  `role`** menjadi `user`, `admin`, atau `owner`. Berlaku seketika — server
-  membaca role dari database di setiap request dan UI ikut berubah realtime,
-  tanpa perlu logout/login.
-- Nilai role yang salah ketik / kosong dianggap `user`.
-- Client tidak bisa menulis ke `users` (lihat `firestore.rules`), jadi tidak
-  ada user yang bisa menaikkan role-nya sendiri; hanya yang punya akses
-  Firebase Console / Admin SDK.
-- Dashboard `/admin → Pengguna` hanya menampilkan role (read-only) + blokir
-  akun.
+- Daftar di website → akun otomatis dicatat di **Realtime Database**
+  `users/{uid}` dengan `role: "user"` (plus `email`, `displayName`,
+  `createdAt`, `isBlocked`).
+- **Satu-satunya sumber role = `users/{uid}/role`.** Tidak ada custom claim,
+  endpoint `/api/admin/roles`, maupun `/api/admin/setup`.
+- Untuk meng-acc / mengubah role: **Firebase Console → Realtime Database →
+  Data → `users` →** pilih akun (cocokkan lewat `email`) **→ ubah `role`**
+  jadi `user`, `admin`, atau `owner`. Berlaku seketika, tanpa logout/login.
+- Nilai role salah ketik / kosong dianggap `user`.
+- **Wajib** pasang rules dari `database.rules.json` (tab Rules → Publish).
+  Rules itu melarang semua tulis dari browser, jadi user tidak bisa menaikkan
+  role sendiri; server (Admin SDK) tetap bisa menulis.
+- Dashboard `/admin → Users` hanya menampilkan role (read-only) + blokir akun.
 
 ## Setup Admin (owner/admin pertama)
 
-1. **Deploy app** ke Vercel dengan semua environment variables terisi.
-2. Buka halaman `/admin` → **Daftar akun** (email + password). Akun ber-role
-   `user`.
-3. Firebase Console → Firestore → `users` → dokumen akunmu → ubah `role`
-   menjadi `owner` (atau `admin`).
-4. Refresh `/admin` — dashboard terbuka.
+1. Isi `NEXT_PUBLIC_FIREBASE_DATABASE_URL` (URL lengkap Realtime Database) di
+   Vercel, lalu redeploy.
+2. Publish `database.rules.json` di Realtime Database → Rules.
+3. Buka `/admin` → **Daftar akun** (email + password). Akun ber-role `user`.
+4. Realtime Database → Data → `users` → akunmu → ubah `role` jadi `owner`.
+5. Refresh `/admin` — dashboard terbuka.
 
 ## Setup Firebase Security Rules
 
@@ -129,7 +126,7 @@ Settings → Environment Variables (Production + Preview + Development).
 - Input disanitasi (`src/lib/security/sanitize.ts`) dan divalidasi via
   `src/lib/validations`. React escape default + output tulisan sebagai teks
   biasa — tanpa `dangerouslySetInnerHTML`.
-- Role dibaca server dari `users/{uid}.role` (Firestore) di setiap request;
+- Role dibaca server dari `users/{uid}/role` (Firestore) di setiap request;
   client tidak punya izin menulis ke koleksi `users`.
 - Report mensupport 6 alasan, antar lain bullying, harassment, pemerasan,
   privasi, dan konten tidak pantas.

@@ -15,8 +15,8 @@ import {
   signInAnonymously,
   signOut,
 } from "firebase/auth";
-import { doc, onSnapshot } from "firebase/firestore";
-import { getAuthClient, getDb, isFirebaseConfigured } from "@/lib/firebase/client";
+import { onValue, ref } from "firebase/database";
+import { getAuthClient, getRtdb, isFirebaseConfigured } from "@/lib/firebase/client";
 import { api } from "@/lib/api";
 import { normalizeUserRole } from "@/lib/auth/roles";
 import type { UserRole } from "@/types";
@@ -86,26 +86,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         });
       };
 
-      // Role dibaca dari database users/{uid}.role dan diikuti secara realtime:
+      // Role dibaca dari Realtime Database users/{uid} dan diikuti realtime:
       // ubah role di Firebase Console → UI langsung ikut berubah.
-      unsubDoc = onSnapshot(
-        doc(getDb(), "users", user.uid),
-        (snap) => {
-          apply(snap.exists() ? snap.data()?.role : "user");
-          // Akun email yang belum punya dokumen → buat (role "user").
-          if (
-            !snap.exists() &&
-            !user.isAnonymous &&
-            profileSynced.current !== user.uid
-          ) {
-            profileSynced.current = user.uid;
-            api("/api/auth/profile", { body: {} }).catch(() => {
-              profileSynced.current = null;
-            });
+      const syncProfile = () =>
+        api("/api/auth/profile", { body: {} })
+          .then((res) => apply(res?.role))
+          .catch(() => apply("user"));
+
+      try {
+        unsubDoc = onValue(
+          ref(getRtdb(), `users/${user.uid}`),
+          (snap) => {
+            const data = snap.val() as Record<string, unknown> | null;
+            apply(data ? data.role : "user");
+            // Akun email yang belum tercatat → buat (role "user").
+            if (
+              !data &&
+              !user.isAnonymous &&
+              profileSynced.current !== user.uid
+            ) {
+              profileSynced.current = user.uid;
+              api("/api/auth/profile", { body: {} }).catch(() => {
+                profileSynced.current = null;
+              });
+            }
+          },
+          () => {
+            // Rules menolak / database belum dikonfigurasi → minta ke server.
+            if (!user.isAnonymous) void syncProfile();
+            else apply("user");
           }
-        },
-        () => apply("user")
-      );
+        );
+      } catch {
+        if (!user.isAnonymous) void syncProfile();
+        else apply("user");
+      }
     });
 
     return () => {
