@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
 import { getAdminAuth, getAdminDb } from "@/lib/firebase/admin";
-import { effectiveRole, normalizeUserRole, rank } from "@/lib/auth/roles";
+import { normalizeUserRole, rank } from "@/lib/auth/roles";
 import type { UserRole } from "@/types";
 
 export class ApiError extends Error {
@@ -30,42 +30,59 @@ export function errorResponse(err: unknown): Response {
 
 async function verifyRequestToken(
   req: NextRequest
-): Promise<{ uid: string; claim: unknown } | null> {
+): Promise<{ uid: string; email: string | null } | null> {
   const authHeader = req.headers.get("authorization");
   if (!authHeader?.startsWith("Bearer ")) return null;
   const token = authHeader.slice("Bearer ".length).trim();
   if (!token || token.length > 4096) return null;
   try {
     const decoded = await getAdminAuth().verifyIdToken(token, true);
-    return { uid: decoded.uid, claim: decoded.role };
+    return { uid: decoded.uid, email: decoded.email ?? null };
   } catch {
     return null;
   }
 }
 
-interface AuthContext {
+export interface AuthContext {
   uid: string;
-  claim: unknown;
-  dbRole: string;
+  email: string | null;
   role: UserRole;
 }
 
-/** Signed-in + mirror ke users/{uid}: role dipilih rank terendah claim vs DB. */
+/**
+ * Signed-in + baca role dari database (users/{uid}.role).
+ * Akun email yang belum punya dokumen otomatis dibuat dengan role "user",
+ * jadi akun yang mendaftar langsung muncul di database untuk di-acc.
+ * Role dibaca ulang tiap request → perubahan di database langsung berlaku.
+ */
 async function getAuthContext(req: NextRequest): Promise<AuthContext> {
   const verified = await verifyRequestToken(req);
   if (!verified) {
     throw new ApiError(
       401,
-      verified === null
-        ? "Kamu belum terautentikasi."
-        : "Sesi tidak valid, coba muat ulang halaman.",
+      "Kamu belum terautentikasi atau sesi tidak valid, coba muat ulang halaman.",
       "unauthenticated"
     );
   }
-  const userDoc = await getAdminDb().collection("users").doc(verified.uid).get();
-  const dbRole = userDoc.data()?.role;
-  const role = effectiveRole(verified.claim, dbRole);
-  return { uid: verified.uid, claim: verified.claim, dbRole, role };
+  const ref = getAdminDb().collection("users").doc(verified.uid);
+  const snap = await ref.get();
+  let role: UserRole = "user";
+  if (!snap.exists) {
+    if (verified.email) {
+      await ensureUserDoc(verified.uid, verified.email);
+    }
+  } else {
+    role = normalizeUserRole(snap.data()?.role);
+    if (verified.email && snap.data()?.email !== verified.email) {
+      await ref.set({ email: verified.email }, { merge: true });
+    }
+  }
+  return { uid: verified.uid, email: verified.email, role };
+}
+
+/** Untuk endpoint yang butuh uid + email + role. */
+export async function requireAuth(req: NextRequest): Promise<AuthContext> {
+  return getAuthContext(req);
 }
 
 /** Semua signed-in user (termasuk user biasa & anonim). */
@@ -73,7 +90,7 @@ export async function requireUid(req: NextRequest): Promise<string> {
   return (await getAuthContext(req)).uid;
 }
 
-/** Login email dengan role admin atau owner di claim ATAU database — effective min rank. */
+/** Role admin atau owner di database (users/{uid}.role). */
 export async function requireStaff(req: NextRequest): Promise<AuthContext> {
   const ctx = await getAuthContext(req);
   if (rank(ctx.role) < 1) {
@@ -102,16 +119,26 @@ export async function assertNotBlocked(uid: string): Promise<void> {
   }
 }
 
-/** Membuat dokumen users/{uid} dengan role default "user" bila belum ada. */
-export async function ensureUserDoc(uid: string): Promise<string> {
+/**
+ * Membuat dokumen users/{uid} dengan role default "user" bila belum ada.
+ * Bila sudah ada, role TIDAK disentuh (hanya melengkapi email kalau kosong).
+ */
+export async function ensureUserDoc(
+  uid: string,
+  email?: string | null
+): Promise<string> {
   const db = getAdminDb();
   const ref = db.collection("users").doc(uid);
   const snap = await ref.get();
   if (snap.exists) {
+    if (email && !snap.data()?.email) {
+      await ref.set({ email }, { merge: true });
+    }
     return normalizeUserRole(snap.data()?.role);
   }
   await ref.set({
     uid,
+    ...(email ? { email } : {}),
     role: "user",
     createdAt: Date.now(),
     isBlocked: false,

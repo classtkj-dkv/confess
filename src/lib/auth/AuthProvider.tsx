@@ -6,6 +6,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -14,7 +15,9 @@ import {
   signInAnonymously,
   signOut,
 } from "firebase/auth";
-import { getAuthClient, isFirebaseConfigured } from "@/lib/firebase/client";
+import { doc, onSnapshot } from "firebase/firestore";
+import { getAuthClient, getDb, isFirebaseConfigured } from "@/lib/firebase/client";
+import { api } from "@/lib/api";
 import { normalizeUserRole } from "@/lib/auth/roles";
 import type { UserRole } from "@/types";
 
@@ -49,46 +52,65 @@ const INITIAL: AuthState = {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AuthState>(INITIAL);
 
+  const profileSynced = useRef<string | null>(null);
+
   useEffect(() => {
     if (!isFirebaseConfigured) {
       setState({ ...INITIAL, loading: false, configured: false });
       return;
     }
-    let cancelled = false;
     const auth = getAuthClient();
-    const unsub = onAuthStateChanged(auth, async (user) => {
-      if (cancelled) return;
+    let unsubDoc: (() => void) | null = null;
+
+    const unsubAuth = onAuthStateChanged(auth, (user) => {
+      // Lepas listener dokumen user sebelumnya (ganti akun / logout).
+      unsubDoc?.();
+      unsubDoc = null;
+
       if (!user) {
+        profileSynced.current = null;
         setState({ ...INITIAL, loading: false });
         return;
       }
-      let role: UserRole = "user";
-      try {
-        const token = await user.getIdTokenResult();
-        // claim `role` (owner/admin/user) — fallback ke claim admin lama.
-        role = normalizeUserRole(
-          typeof token.claims.role === "string"
-            ? token.claims.role
-            : token.claims.admin === true
-              ? "admin"
-              : "user"
-        );
-      } catch {
-        role = "user";
-      }
-      setState({
-        uid: user.uid,
-        isAnonymous: user.isAnonymous,
-        role,
-        isAdmin: role === "admin" || role === "owner",
-        isOwner: role === "owner",
-        loading: false,
-        configured: true,
-      });
+
+      const apply = (dbRole: unknown) => {
+        const role = normalizeUserRole(dbRole);
+        setState({
+          uid: user.uid,
+          isAnonymous: user.isAnonymous,
+          role,
+          isAdmin: role === "admin" || role === "owner",
+          isOwner: role === "owner",
+          loading: false,
+          configured: true,
+        });
+      };
+
+      // Role dibaca dari database users/{uid}.role dan diikuti secara realtime:
+      // ubah role di Firebase Console → UI langsung ikut berubah.
+      unsubDoc = onSnapshot(
+        doc(getDb(), "users", user.uid),
+        (snap) => {
+          apply(snap.exists() ? snap.data()?.role : "user");
+          // Akun email yang belum punya dokumen → buat (role "user").
+          if (
+            !snap.exists() &&
+            !user.isAnonymous &&
+            profileSynced.current !== user.uid
+          ) {
+            profileSynced.current = user.uid;
+            api("/api/auth/profile", { body: {} }).catch(() => {
+              profileSynced.current = null;
+            });
+          }
+        },
+        () => apply("user")
+      );
     });
+
     return () => {
-      cancelled = true;
-      unsub();
+      unsubDoc?.();
+      unsubAuth();
     };
   }, []);
 

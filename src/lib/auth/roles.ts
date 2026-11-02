@@ -3,6 +3,10 @@ import type { UserRole } from "@/types";
 /**
  * Role ladder — owner (paling tinggi) > admin > user.
  * Dipakai bersama oleh server (API routes) dan klien.
+ *
+ * SUMBER KEBENARAN: field `role` di dokumen Firestore `users/{uid}`.
+ * Mengubah role = edit field itu langsung di Firebase Console
+ * (Firestore Database → users → pilih akun → role). Berlaku seketika.
  */
 export const ROLE_RANK: Record<UserRole, number> = {
   user: 0,
@@ -14,31 +18,11 @@ export function rank(role: UserRole): number {
   return ROLE_RANK[role] ?? 0;
 }
 
+/** Nilai tidak dikenal / kosong selalu jatuh ke "user" (paling aman). */
 export function normalizeUserRole(value: unknown): UserRole {
-  if (value === "owner" || value === "admin" || value === "user") return value;
+  const v = typeof value === "string" ? value.trim().toLowerCase() : "";
+  if (v === "owner" || v === "admin" || v === "user") return v;
   return "user";
-}
-
-/**
- * Effective role = rank TERENDAH antara custom claim (login) dan dokumen
- * users/{uid}.role (database).
- *
- * Konsekuensi keamanan:
- * - Mengedit users/{uid}.role langsung di database TIDAK BISA menaikkan hak
- *   di atas claim login (claim hanya bisa di-set server via Admin SDK).
- * - Kenaikan role hanya lewat /api/admin/roles (owner-only) yang meng-update
- *   claim DAN dokumen secara atomik.
- * - Urutan tetap: owner paling tinggi, admin di bawahnya, user paling bawah.
- */
-export function effectiveRole(
-  claim: unknown,
-  dbRole: unknown
-): UserRole {
-  const claimRole = normalizeUserRole(
-    typeof claim === "string" ? claim : claim === true ? "admin" : "user"
-  );
-  const db = normalizeUserRole(dbRole);
-  return ROLE_RANK[claimRole] <= ROLE_RANK[db] ? claimRole : db;
 }
 
 export function isStaff(role: UserRole): boolean {

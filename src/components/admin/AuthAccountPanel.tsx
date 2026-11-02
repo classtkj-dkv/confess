@@ -8,7 +8,7 @@ import { useToast } from "@/lib/auth/ToastProvider";
 /**
  * Panel Daftar / Masuk — ditampilkan di halaman /admin bagi pengunjung yang
  * belum punya role admin/owner. Pendaftaran manual selalu ber-role "user";
- * perubahan role (admin/owner) hanya oleh owner lewat dashboard.
+ * perubahan role (admin/owner) dilakukan di database.
  */
 export function AuthAccountPanel() {
   const { toast } = useToast();
@@ -62,10 +62,10 @@ export function AuthAccountPanel() {
       <p className="mt-1 text-xs text-muted">
         {mode === "register" ? (
           <>
-            Pendaftaran baru otomatis ber-role <strong>user biasa</strong> (
-            {"with"} akses confession/komentar saja). Role <strong>admin</strong>{" "}
-            dan <strong>owner</strong> hanya bisa diberikan oleh owner setelah
-            verifikasi.
+            Pendaftaran baru otomatis ber-role <strong>user biasa</strong>{" "}
+            (akses confession/komentar saja). Role <strong>admin</strong> dan{" "}
+            <strong>owner</strong> diberikan setelah akunmu disetujui lewat
+            database.
           </>
         ) : (
           <>Masuk menggunakan email yang sudah terdaftar.</>

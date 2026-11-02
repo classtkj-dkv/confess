@@ -49,44 +49,37 @@ spesifikasi di prompt.txt — server men-set field `status`, counters
 
 | Role | Akses |
 | --- | --- |
-| `owner` | Semua fitur admin + mengatur role akun lain (promote/demote admin/owner) |
+| `owner` | Sama seperti admin (tingkat tertinggi, tidak bisa diblokir) |
 | `admin` | Moderasi confession/komentar, tangani laporan, blokir `user` |
 | `user` | Confession, komentar, reaksi, laporan (default pendaftar baru) |
 
-Aturan server:
+### Cara kerja role (diatur lewat database)
 
-- Role disimpan di **dua tempat**: custom claim `role` Firebase Auth (set
-  server via Admin SDK) dan dokumen `users/{uid}.role`.
-- Role **efektif = rank terendah** di antara claim dan DB. Konsekuensinya:
-  mengedit `users/{uid}.role` langsung di database **tidak bisa** menaikkan
-  hak di atas claim login — naik role hanya lewat `POST /api/admin/roles`
-  (owner-only) yang mengubah claim + dokumen secara atomik.
-- Owner terakhir tidak bisa diturunkan, owner tidak bisa diblokir, akun
-  yang diblokir tidak bisa dinaikkan rolenya, dan admin biasa tidak bisa
-  mengatur role (hanya owner).
+- Daftar di website → akun otomatis dibuat di Firestore `users/{uid}` dengan
+  `role: "user"` (plus `email`, `createdAt`, `isBlocked`).
+- **Satu-satunya sumber role = field `role` di dokumen `users/{uid}`.** Tidak
+  ada lagi custom claim, endpoint `/api/admin/roles`, maupun
+  `/api/admin/setup`.
+- Untuk meng-acc / mengubah role: buka **Firebase Console → Firestore Database
+  → collection `users` →** pilih akun (cari lewat email) **→ ubah field
+  `role`** menjadi `user`, `admin`, atau `owner`. Berlaku seketika — server
+  membaca role dari database di setiap request dan UI ikut berubah realtime,
+  tanpa perlu logout/login.
+- Nilai role yang salah ketik / kosong dianggap `user`.
+- Client tidak bisa menulis ke `users` (lihat `firestore.rules`), jadi tidak
+  ada user yang bisa menaikkan role-nya sendiri; hanya yang punya akses
+  Firebase Console / Admin SDK.
+- Dashboard `/admin → Pengguna` hanya menampilkan role (read-only) + blokir
+  akun.
 
-## Setup Admin
+## Setup Admin (owner/admin pertama)
 
 1. **Deploy app** ke Vercel dengan semua environment variables terisi.
-2. Buka halaman `/admin` → hubungkan akun lewat panel **Daftar akun** (email +
-   password). Pendaftaran akan ber-role `user` — itu memang semestinya.
-3. Ambil UID account yang baru dibuat (tampil di bawah panel daftar atau di
-   Firebase Console → Authentication → Users).
-4. Set `ADMIN_SETUP_SECRET` di Vercel → jalankan bootstrap OWNER pertama:
-
-```bash
-curl -X POST https://<vercel-domain>/api/admin/setup \
-  -H "Content-Type: application/json" \
-  -d '{"secret":"<ADMIN_SETUP_SECRET>","uid":"<UID_LOGIN>"}'
-```
-
-Endpoint hanya bisa dipakai sekali — bila owner sudah ada, server menolak
-(409). Owner kemudian mengatur role admin/user lain langsung dari
-`/admin → Users` (dropdown role).
-5. Setelah owner terpasang, hapus `ADMIN_SETUP_SECRET` di Vercel agar
-   endpoint bootstrap terkunci (503).
-6. Bila sudah ada owner, admin baru ditambahkan oleh owner: `/admin → Users →
-   set role → admin`.
+2. Buka halaman `/admin` → **Daftar akun** (email + password). Akun ber-role
+   `user`.
+3. Firebase Console → Firestore → `users` → dokumen akunmu → ubah `role`
+   menjadi `owner` (atau `admin`).
+4. Refresh `/admin` — dashboard terbuka.
 
 ## Setup Firebase Security Rules
 
@@ -111,7 +104,6 @@ Settings → Environment Variables (Production + Preview + Development).
 | `FIREBASE_ADMIN_PROJECT_ID` | rahasia | Service account `project_id` |
 | `FIREBASE_ADMIN_CLIENT_EMAIL` | rahasia | Service account `client_email` |
 | `FIREBASE_ADMIN_PRIVATE_KEY` | rahasia | Service account `private_key` (escape `\n` saat di Vercel) |
-| `ADMIN_SETUP_SECRET` | rahasia | Kunci endpoint bootstrap admin |
 | `NEXT_PUBLIC_SITE_URL` | klien | domain publik untuk metadata SEO |
 
 ## Deployment Vercel
@@ -124,7 +116,7 @@ Settings → Environment Variables (Production + Preview + Development).
 5. Sanity check post-deploy:
    - `/` memuat feed (pull dari Firestore, public)
    - `/confess` (POST kini terlarang — harus tembus via envelope server)
-   - `/admin` hanya membuka halaman `overview` untuk admin claim.
+   - `/admin` hanya membuka halaman `overview` untuk akun ber-role admin/owner di database.
    - `/api/settings` → JSON `{"maintenanceMode":false,...}`.
 
 ## Catatan keamanan
@@ -137,8 +129,8 @@ Settings → Environment Variables (Production + Preview + Development).
 - Input disanitasi (`src/lib/security/sanitize.ts`) dan divalidasi via
   `src/lib/validations`. React escape default + output tulisan sebagai teks
   biasa — tanpa `dangerouslySetInnerHTML`.
-- Custom claim `admin` hanya dapat diset dari server (Admin SDK) — tidak bisa
-  dipalsukan dari browser.
+- Role dibaca server dari `users/{uid}.role` (Firestore) di setiap request;
+  client tidak punya izin menulis ke koleksi `users`.
 - Report mensupport 6 alasan, antar lain bullying, harassment, pemerasan,
   privasi, dan konten tidak pantas.
 

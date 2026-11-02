@@ -74,6 +74,7 @@ interface AdminReportRow {
 
 interface AdminUserRow {
   uid: string;
+  email: string;
   role: string;
   isBlocked: boolean;
   createdAt: number;
@@ -114,7 +115,7 @@ export function AdminClient() {
         <EmptyState
           icon="🔐"
           title="Akses admin diperlukan"
-          description="Dashboard hanya untuk akun dengan role admin/owner yang diverifikasi server (custom claim). Pendaftaran baru selalu ber-role user biasa — role naik hanya oleh keputusan owner."
+          description="Dashboard hanya untuk akun dengan role admin/owner yang diverifikasi server dari database. Pendaftaran baru selalu ber-role user biasa — role naik setelah di-acc lewat database."
         />
         {/* Daftar manual: selalu ber-role user biasa */}
         <AuthAccountPanel />
@@ -156,7 +157,7 @@ export function AdminClient() {
         ))}
       </div>
 
-      <AdminSection tab={tab} toast={toast} isOwner={isOwner} />
+      <AdminSection tab={tab} toast={toast} />
     </div>
   );
 }
@@ -174,11 +175,9 @@ function StatSkeletonSkeletonList(): React.ReactNode {
 function AdminSection({
   tab,
   toast,
-  isOwner,
 }: {
   tab: Tab;
   toast: ReturnType<typeof useToast>["toast"];
-  isOwner: boolean;
 }) {
   const [stats, setStats] = useState<StatsShape | null>(null);
   const [loadingStats, setLoadingStats] = useState(true);
@@ -247,7 +246,7 @@ function AdminSection({
     case "reports":
       return <ReportRows onAction={onAction} />;
     case "users":
-      return <UserRows onAction={onAction} isOwner={isOwner} />;
+      return <UserRows onAction={onAction} />;
     case "categories":
       return <CategoriesView />;
     case "announcements":
@@ -666,18 +665,13 @@ function RoleBadge({ role }: { role: string }) {
 
 function UserRows({
   onAction,
-  isOwner,
 }: {
   onAction: (type: string, id: string) => Promise<void>;
-  isOwner: boolean;
 }) {
   const [rows, setRows] = useState<AdminUserRow[] | null>(null);
   const [blockedOnly, setBlockedOnly] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-  const { refreshAuthToken } = useAuth();
-  const { toast: userToast } = useToast();
-
   const refresh = useCallback(async () => {
     setRows(null);
     const data = (await api("/api/admin/listings?type=users")) as {
@@ -685,20 +679,6 @@ function UserRows({
     };
     setRows(data.items ?? []);
   }, []);
-
-  async function setRole(uid: string, role: string) {
-    setBusy(uid);
-    try {
-      await api("/api/admin/roles", { body: { uid, role } });
-      userToast("success", `Role ${shortUid(uid)} → ${role.toUpperCase()}.`);
-      await refreshAuthToken();
-      void refresh();
-    } catch (err) {
-      userToast("error", err instanceof ApiClientError ? err.message : "Gagal mengubah role.");
-    } finally {
-      setBusy(null);
-    }
-  }
 
   async function act(type: string, id: string) {
     setBusy(id);
@@ -711,14 +691,19 @@ function UserRows({
     if (!rows) return null;
     const list = blockedOnly ? rows.filter((r) => r.isBlocked) : rows;
     const q = search.trim().toLowerCase();
-    return q ? list.filter((r) => r.uid.toLowerCase().includes(q)) : list;
+    return q
+      ? list.filter(
+          (r) =>
+            r.uid.toLowerCase().includes(q) || r.email.toLowerCase().includes(q)
+        )
+      : list;
   }, [rows, blockedOnly, search]);
 
   return (
     <section className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
         <h2 className="text-base font-bold text-ink">Pengguna</h2>
-        <span className="badge">ladder: owner &gt; admin &gt; user</span>
+        <span className="badge">role diubah di database (users/uid → role)</span>
         <label className="ml-auto flex items-center gap-2 text-xs text-muted">
           <input
             type="checkbox"
@@ -731,10 +716,10 @@ function UserRows({
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Cari UID…"
+          placeholder="Cari email / UID…"
           maxLength={40}
           className="input !w-44 !py-1.5 text-xs"
-          aria-label="Cari UID pengguna"
+          aria-label="Cari email atau UID pengguna"
         />
       </div>
 
@@ -745,8 +730,8 @@ function UserRows({
       ) : (
         filtered.map((u) => (
           <div key={u.uid} className="card flex flex-wrap items-center gap-3 p-4">
-            <span className="font-mono text-xs text-ink" title={u.uid}>
-              {shortUid(u.uid)}
+            <span className="text-xs text-ink" title={u.uid}>
+              {u.email || <span className="font-mono">{shortUid(u.uid)}</span>}
             </span>
             <RoleBadge role={u.role} />
             <span className={`badge ${u.isBlocked ? "text-danger" : "text-success"}`}>
@@ -755,23 +740,6 @@ function UserRows({
             <span className="ml-auto text-[11px] text-muted">
               {formatDateTime(u.createdAt)}
             </span>
-
-            {isOwner && !u.isBlocked && (
-              <label className="flex items-center gap-2 text-[11px] text-muted">
-                <span className="sr-only">Ubah role {shortUid(u.uid)}</span>
-                <select
-                  value={u.role}
-                  disabled={busy === u.uid}
-                  onChange={(e) => void setRole(u.uid, e.target.value)}
-                  className="input !w-28 !py-1.5 text-xs"
-                >
-                  <option value="user">user</option>
-                  <option value="admin">admin</option>
-                  <option value="owner">owner</option>
-                </select>
-              </label>
-            )}
-            {!isOwner && <span className="text-[11px] text-muted">role hanya diatur owner</span>}
 
             {u.isBlocked ? (
               <button

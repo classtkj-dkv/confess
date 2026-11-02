@@ -6,7 +6,7 @@ import {
   assertNotBlocked,
   ensureUserDoc,
   errorResponse,
-  requireUid,
+  requireAuth,
 } from "@/lib/security/apiHelpers";
 import { sanitizeText } from "@/lib/security/sanitize";
 
@@ -16,14 +16,14 @@ export const dynamic = "force-dynamic";
 /**
  * Dipanggil setelah daftar/masuk dengan email:
  * memastikan dokumen users/{uid} ada dengan role default "user" (bila baru).
- * Role naik (admin/owner) TIDAK PERNAH bisa diatur dari sini —
- * hanya via /api/admin/roles (owner-only) atau bootstrap endpoint.
+ * Role TIDAK PERNAH bisa diatur dari sini — role hanya diubah langsung
+ * di database (Firebase Console → Firestore → users/{uid}.role).
  */
 export async function POST(req: NextRequest): Promise<Response> {
   try {
-    const uid = await requireUid(req);
+    const { uid, email } = await requireAuth(req);
     await assertNotBlocked(uid);
-    const role = await ensureUserDoc(uid);
+    const role = await ensureUserDoc(uid, email);
 
     let body: unknown = {};
     try {

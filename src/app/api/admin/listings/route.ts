@@ -49,6 +49,7 @@ export async function GET(req: NextRequest): Promise<Response> {
       const snap = await queryRef.offset((page - 1) * pageSize).limit(pageSize).get();
       const items = snap.docs.map((d) => ({
         uid: d.id,
+        email: String((d.data() as Record<string, unknown>).email ?? ""),
         role: String((d.data() as Record<string, unknown>).role ?? "user"),
         isBlocked: (d.data() as Record<string, unknown>).isBlocked === true,
         createdAt:

@@ -33,15 +33,25 @@ function friendlyAuthError(err: unknown): string {
       return "Terlalu percobaan gagal — coba lagi beberapa menit.";
     case "auth/network-request-failed":
       return "Koneksi bermasalah, cek internetmu.";
+    case "auth/operation-not-allowed":
+    case "auth/admin-restricted-operation":
+      return "Daftar email/password belum diaktifkan. Firebase Console → Authentication → Sign-in method → aktifkan Email/Password (dan Anonymous).";
+    case "auth/credential-already-in-use":
+      return "Email ini sudah dipakai akun lain. Gunakan Masuk.";
+    case "auth/unauthorized-domain":
+      return "Domain situs belum diizinkan. Firebase Console → Authentication → Settings → Authorized domains → tambahkan domain Vercel-mu.";
+    case "auth/invalid-api-key":
+    case "auth/api-key-not-valid.-please-pass-a-valid-api-key.":
+      return "API key Firebase tidak valid. Cek NEXT_PUBLIC_FIREBASE_* di Vercel.";
     default:
-      return "Operasi akun gagal. Coba lagi.";
+      return `Operasi akun gagal${code ? ` (${code})` : ""}. Coba lagi.`;
   }
 }
 
 /**
  * Daftar manual (email + password).
- * Setiap pendaftaran baru selalu ber-role "user" biasa — role admin/owner
- * hanya bisa diberikan oleh owner lewat dashboard (server-side claim).
+ * Setiap pendaftaran baru selalu ber-role "user" biasa dan langsung dicatat
+ * di database (users/{uid}). Naik role = edit field `role` di database.
  * Bila pengunjung sudah punya sesi anonim, kredensial email di-LINK ke
  * akun anonim itu sehingga confession mereka sebelumnya tetap miliknya.
  */
@@ -88,10 +98,15 @@ export async function registerWithEmail(
   }
 
   // Buat / pastikan dokumen users/{uid} dengan role "user".
-  try {
-    await api("/api/auth/profile", { body: { displayName: displayName?.trim() } });
-  } catch {
-    /* dokumen user dibuat otomatis saat aksi pertama (posts/comments). */
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      await api("/api/auth/profile", {
+        body: { displayName: displayName?.trim() },
+      });
+      break;
+    } catch {
+      /* dicoba ulang sekali; bila tetap gagal, AuthProvider membuatnya saat login. */
+    }
   }
 
   return uid;
