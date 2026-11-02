@@ -1,0 +1,63 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---------- helpers ----------
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isPublishedConfession(id) {
+      let conf = get(/databases/$(database)/documents/confessions/$(id)).data;
+      return conf.status == 'PUBLISHED';
+    }
+
+    // Confessions: everyone reads approved ones; no client writes.
+    // All writes go through Next.js API routes backed by the Admin SDK.
+    match /confessions/{confId} {
+      allow get, list: if resource.data.status == 'PUBLISHED';
+      allow create, update, delete: if false;
+    }
+
+    // Comments: public read only for visible comments on published confessions.
+    match /comments/{commentId} {
+      allow get, list: if resource.data.status == 'VISIBLE'
+        && request.auth != null;
+      // NOTE: for anonymous-auth-only environments keep the extra nonnull check.
+      allow create, update, delete: if false;
+    }
+
+    // Reactions are per (confession,user) and must never leak other users' data
+    // or be mutated from the client (count manipulation protection).
+    match /reactions/{reactionId} {
+      allow get, list: if signedIn()
+        && resource.data.userUid == request.auth.uid;
+      allow create, update, delete: if false;
+    }
+
+    match /reports/{reportId} {
+      allow read: if false; // handled exclusively by admin API
+      allow create, update, delete: if false;
+    }
+
+    match /users/{uid} {
+      allow read: if signedIn() && request.auth.uid == uid;
+      allow create, update, delete: if false;
+    }
+
+    match /settings/{settingId} {
+      allow read: if true; // maintenance / announcement banner is public
+      allow write: if false;
+    }
+
+    // Server-only fixation artifacts from the React rate limiter.
+    match /rateLimits/{rateLimitId} {
+      allow read, write: if false;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
