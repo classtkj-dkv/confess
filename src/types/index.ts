@@ -1,10 +1,9 @@
-import type { Timestamp } from "firebase/firestore";
-
 export type ConfessionStatus = "PENDING" | "PUBLISHED" | "REJECTED";
 export type CommentStatus = "VISIBLE" | "HIDDEN";
 export type ReportStatus = "OPEN" | "RESOLVED" | "DISMISSED";
 export type ReactionType = "like";
-export type AdminRole = "admin" | "user";
+/** Role ladder: owner (paling tinggi) > admin > user. */
+export type UserRole = "user" | "admin" | "owner";
 
 export interface Confession {
   id: string;
@@ -46,7 +45,7 @@ export interface Report {
 
 export interface AppUser {
   uid: string;
-  role: AdminRole;
+  role: UserRole;
   createdAt: number;
   isBlocked: boolean;
 }
@@ -74,5 +73,3 @@ export type ReportReason =
   | "inappropriate";
 
 export type FeedFilter = "all" | "latest" | "popular" | "random";
-
-export type ServerTimestamp = Timestamp;

@@ -1,5 +1,5 @@
 import type { NextRequest } from "next/server";
-import { errorResponse, requireAdmin } from "@/lib/security/apiHelpers";
+import { errorResponse, requireStaff } from "@/lib/security/apiHelpers";
 import { updateAdminSettings } from "@/lib/firebase/settings";
 import { sanitizeText } from "@/lib/security/sanitize";
 
@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest): Promise<Response> {
   try {
-    await requireAdmin(req);
+    await requireStaff(req);
 
     let raw: unknown;
     try {

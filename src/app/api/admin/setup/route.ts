@@ -1,22 +1,26 @@
 import type { NextRequest } from "next/server";
-import { errorResponse } from "@/lib/security/apiHelpers";
+import { errorResponse, ApiError } from "@/lib/security/apiHelpers";
 import { getAdminAuth, getAdminDb } from "@/lib/firebase/admin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /**
- * One-time admin bootstrap: promotes a UID to admin using the shared secret
- * (ADMIN_SETUP_SECRET). Store the secret as a Vercel env var and keep it out
- * of client code. After setup, this endpoint can be disabled by clearing the
- * env var in production.
+ * Bootstrap OWNER pertama (role ladder: owner > admin > user).
+ * Dikunci dengan ADMIN_SETUP_SECRET (env-only, tidak ada di kode).
+ * Bila owner sudah ada, endpoint menolak — penambahan admin/owner lanjutan
+ * hanya dilakukan oleh owner lewat /api/admin/roles.
+ *
+ * Steps: curl -X POST <domain>/api/admin/setup
+ *        -H "Content-Type: application/json"
+ *        -d '{"secret":"<ADMIN_SETUP_SECRET>","uid":"<UID_LOGIN_MU>"}'
  */
 export async function POST(req: NextRequest): Promise<Response> {
   try {
     const secret = process.env.ADMIN_SETUP_SECRET;
     if (!secret) {
       return Response.json(
-        { error: "ADMIN_SETUP_SECRET tidak tersedia; bootstrap admin dikunci." },
+        { error: "ADMIN_SETUP_SECRET tidak tersedia; bootstrap dikunci." },
         { status: 503 }
       );
     }
@@ -40,23 +44,51 @@ export async function POST(req: NextRequest): Promise<Response> {
       return Response.json({ error: "Secret salah." }, { status: 403 });
     }
     if (typeof uid !== "string" || !/^[a-zA-Z0-9_-]{17,28}$/.test(uid)) {
-      return Response.json({ error: "UID anonim tidak valid." }, { status: 400 });
+      return Response.json(
+        { error: "UID login tidak valid (17-28 karakter). Buka /admin saat sudah login untuk menyalin UID-mu." },
+        { status: 400 }
+      );
     }
 
-    const auth = getAdminAuth();
-    auth.setCustomUserClaims(uid, { admin: true });
-    await getAdminDb().collection("users").doc(uid).set(
-      { uid, role: "admin", isBlocked: false, createdAt: Date.now() },
+    const db = getAdminDb();
+    // Tolak bila owner sudah ada di database.
+    const existingOwners = await db
+      .collection("users")
+      .where("role", "==", "owner")
+      .limit(1)
+      .get();
+
+    if (!existingOwners.empty) {
+      return Response.json(
+        { error: "Owner sudah ditetapkan. Gunakan fitur kelola role oleh owner di /admin." },
+        { status: 409 }
+      );
+    }
+
+    // claim role "owner" — hanya bisa diset dari Server (Admin SDK).
+    await getAdminAuth().setCustomUserClaims(uid, { role: "owner" });
+    await db.collection("users").doc(uid).set(
+      {
+        uid,
+        role: "owner",
+        isBlocked: false,
+        createdAt: Date.now(),
+      },
       { merge: true }
     );
 
-    return Response.json({ ok: true, message: "UID ditetapkan sebagai admin." });
+    return Response.json({
+      ok: true,
+      message: "UID telah ditetapkan sebagai OWNER. Login ulang / refresh token bila perlu.",
+      role: "owner",
+    });
   } catch (err) {
+    if (err instanceof ApiError) return errorResponse(err);
     return errorResponse(err);
   }
 }
 
-/** Constant-time compare without extra deps. */
+/** Constant-time compare tanpa dependensi tambahan. */
 function timingSafeEqual(a: string, b: string): boolean {
   if (a.length !== b.length) return false;
   let diff = 0;

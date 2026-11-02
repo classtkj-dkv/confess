@@ -1,5 +1,5 @@
 import type { NextRequest } from "next/server";
-import { errorResponse, requireAdmin } from "@/lib/security/apiHelpers";
+import { errorResponse, requireStaff } from "@/lib/security/apiHelpers";
 import { getAdminDb } from "@/lib/firebase/admin";
 
 export const runtime = "nodejs";
@@ -39,7 +39,7 @@ const allowedActions: readonly AdminAction[] = [
 
 export async function POST(req: NextRequest): Promise<Response> {
   try {
-    await requireAdmin(req);
+    await requireStaff(req);
     const db = getAdminDb();
 
     let body: ActionBody;
@@ -146,6 +146,13 @@ export async function POST(req: NextRequest): Promise<Response> {
       case "blockUser": {
         if (!/^[a-zA-Z0-9_-]{17,28}$/.test(body.id)) {
           return Response.json({ error: "UID tidak valid." }, { status: 400 });
+        }
+        const targetUser = await db.collection("users").doc(body.id).get();
+        if (targetUser.data()?.role === "owner") {
+          return Response.json(
+            { error: "Owner tidak bisa diblokir." },
+            { status: 403 }
+          );
         }
         await db.collection("users").doc(body.id).set(
           { uid: body.id, isBlocked: true },

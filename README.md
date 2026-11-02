@@ -35,11 +35,58 @@ spesifikasi di prompt.txt — server men-set field `status`, counters
 
 ## Setup Authentication
 
-- Anonymous Authentication diaktifkan; setiap pengunjung otomatis jadi akun
-  anonim ketika pertama kali mengirim confession, komentar, reaksi, atau
-  laporan — tanpa email, tanpa signup manual.
-- Identitas anonim tidak pernah ditampilkan publik. UID hanya dipakai server
-  untuk rate limiting, like dedup, ownership komentar, dan pelaporan.
+- **Daftar manual (email + password)** tersedia di halaman `/admin` (panel
+  "Daftar akun") dan bisa dipakai siapa pun. Setiap akun baru otomatis
+  ber-role **user** biasa — tidak bisa memilih role saat mendaftar.
+- Anonymous Authentication juga diaktifkan sebagai fallback akses anonim:
+  pengunjung yang tidak mendaftar tetap bisa confession via akun anonim yang
+  dibuat otomatis. Bila pengunjung anonim kemudian mendaftar, kredensial email
+  di-link ke akun anonim tersebut (confession lama tetap miliknya).
+- Identitas muka pengguna tidak pernah tampil publik — UID hanya dipakai
+  server untuk rate limiting, dedup like, dan pelaporan.
+
+### Role ladder: owner > admin > user
+
+| Role | Akses |
+| --- | --- |
+| `owner` | Semua fitur admin + mengatur role akun lain (promote/demote admin/owner) |
+| `admin` | Moderasi confession/komentar, tangani laporan, blokir `user` |
+| `user` | Confession, komentar, reaksi, laporan (default pendaftar baru) |
+
+Aturan server:
+
+- Role disimpan di **dua tempat**: custom claim `role` Firebase Auth (set
+  server via Admin SDK) dan dokumen `users/{uid}.role`.
+- Role **efektif = rank terendah** di antara claim dan DB. Konsekuensinya:
+  mengedit `users/{uid}.role` langsung di database **tidak bisa** menaikkan
+  hak di atas claim login — naik role hanya lewat `POST /api/admin/roles`
+  (owner-only) yang mengubah claim + dokumen secara atomik.
+- Owner terakhir tidak bisa diturunkan, owner tidak bisa diblokir, akun
+  yang diblokir tidak bisa dinaikkan rolenya, dan admin biasa tidak bisa
+  mengatur role (hanya owner).
+
+## Setup Admin
+
+1. **Deploy app** ke Vercel dengan semua environment variables terisi.
+2. Buka halaman `/admin` → hubungkan akun lewat panel **Daftar akun** (email +
+   password). Pendaftaran akan ber-role `user` — itu memang semestinya.
+3. Ambil UID account yang baru dibuat (tampil di bawah panel daftar atau di
+   Firebase Console → Authentication → Users).
+4. Set `ADMIN_SETUP_SECRET` di Vercel → jalankan bootstrap OWNER pertama:
+
+```bash
+curl -X POST https://<vercel-domain>/api/admin/setup \
+  -H "Content-Type: application/json" \
+  -d '{"secret":"<ADMIN_SETUP_SECRET>","uid":"<UID_LOGIN>"}'
+```
+
+Endpoint hanya bisa dipakai sekali — bila owner sudah ada, server menolak
+(409). Owner kemudian mengatur role admin/user lain langsung dari
+`/admin → Users` (dropdown role).
+5. Setelah owner terpasang, hapus `ADMIN_SETUP_SECRET` di Vercel agar
+   endpoint bootstrap terkunci (503).
+6. Bila sudah ada owner, admin baru ditambahkan oleh owner: `/admin → Users →
+   set role → admin`.
 
 ## Setup Firebase Security Rules
 
@@ -47,28 +94,6 @@ spesifikasi di prompt.txt — server men-set field `status`, counters
    isi `firestore.rules` di console → Firestore → Rules.
 2. Deploy composite index: `npx firebase-tools deploy --only firestore:indexes`
    (file `firestore.indexes.json`).
-
-## Setup Admin
-
-Admin diverifikasi lewat **Firebase Auth custom claim** + mirror dokumen
-`users/{uid}.role == "admin"`. Tidak ada UI untuk mengangkat admin.
-
-1. Buka aplikasi sekali sehingga akun anonimmu terbuat. Ambil UID dari Profil
-   (dev tools `localStorage`/cookie, atau console Firebase → Authentication →
-   Users → salin Anonymous uid).
-2. Set `ADMIN_SETUP_SECRET` di env.
-3. POST ke endpoint bootstrap:
-
-```bash
-curl -X POST https://<vercel-domain>/api/admin/setup \
-  -H "Content-Type: application/json" \
-  -d '{"secret":"<ADMIN_SETUP_SECRET>","uid":"<UID_ANONIM>"}'
-```
-
-4. Setelah selesai, hapus/kosongkan `ADMIN_SETUP_SECRET` di Vercel agar
-   endpoint terkunci (503).
-5. Ganti dokumen override: claim tersimpan token; bila perlu akses admin
-   tambahan, ulangi langkah 3 untuk UID lain saat secret masih tersedia.
 
 ## Environment Variables
 

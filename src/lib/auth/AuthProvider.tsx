@@ -15,23 +15,23 @@ import {
   signOut,
 } from "firebase/auth";
 import { getAuthClient, isFirebaseConfigured } from "@/lib/firebase/client";
-import type { AdminRole } from "@/types";
+import { normalizeUserRole } from "@/lib/auth/roles";
+import type { UserRole } from "@/types";
 
 export interface AuthState {
   uid: string | null;
   isAnonymous: boolean;
-  role: AdminRole;
+  role: UserRole;
   isAdmin: boolean;
+  isOwner: boolean;
   loading: boolean;
   configured: boolean;
 }
 
 interface AuthContextValue extends AuthState {
-  /** Signs the visitor in as an anonymous account. */
   ensureSignedIn: () => Promise<string | null>;
   refreshAuthToken: () => Promise<string | null>;
   signOutNow: () => Promise<void>;
-  configured: boolean;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -41,17 +41,17 @@ const INITIAL: AuthState = {
   isAnonymous: true,
   role: "user",
   isAdmin: false,
+  isOwner: false,
   loading: true,
   configured: isFirebaseConfigured,
 };
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AuthState>(INITIAL);
-  const configured = isFirebaseConfigured;
 
   useEffect(() => {
-    if (!configured) {
-      setState({ ...INITIAL, loading: false });
+    if (!isFirebaseConfigured) {
+      setState({ ...INITIAL, loading: false, configured: false });
       return;
     }
     let cancelled = false;
@@ -59,13 +59,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const unsub = onAuthStateChanged(auth, async (user) => {
       if (cancelled) return;
       if (!user) {
-        setState({ ...INITIAL, loading: false, configured });
+        setState({ ...INITIAL, loading: false });
         return;
       }
-      let role: AdminRole = "user";
+      let role: UserRole = "user";
       try {
         const token = await user.getIdTokenResult();
-        role = token.claims.admin === true ? "admin" : "user";
+        // claim `role` (owner/admin/user) — fallback ke claim admin lama.
+        role = normalizeUserRole(
+          typeof token.claims.role === "string"
+            ? token.claims.role
+            : token.claims.admin === true
+              ? "admin"
+              : "user"
+        );
       } catch {
         role = "user";
       }
@@ -73,16 +80,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         uid: user.uid,
         isAnonymous: user.isAnonymous,
         role,
-        isAdmin: role === "admin",
+        isAdmin: role === "admin" || role === "owner",
+        isOwner: role === "owner",
         loading: false,
-        configured,
+        configured: true,
       });
     });
     return () => {
       cancelled = true;
       unsub();
     };
-  }, [configured]);
+  }, []);
 
   const ensureSignedIn = useCallback(async (): Promise<string | null> => {
     const auth = getAuthClient();
@@ -111,8 +119,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOutNow = useCallback(async () => {
     try {
-      // Signing out an anonymous session destroys the shadow account; that is
-      // intended: a fresh anonymous identity is created on next interaction.
       await signOut(getAuthClient());
     } catch (err) {
       // eslint-disable-next-line no-console
@@ -126,9 +132,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       ensureSignedIn,
       refreshAuthToken,
       signOutNow,
-      configured,
     }),
-    [state, ensureSignedIn, refreshAuthToken, signOutNow, configured]
+    [state, ensureSignedIn, refreshAuthToken, signOutNow]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

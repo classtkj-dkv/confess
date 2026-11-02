@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 import { getAdminAuth, getAdminDb } from "@/lib/firebase/admin";
-import type { AppUser } from "@/types";
+import { effectiveRole, normalizeUserRole, rank } from "@/lib/auth/roles";
+import type { UserRole } from "@/types";
 
 export class ApiError extends Error {
   constructor(
@@ -10,10 +11,6 @@ export class ApiError extends Error {
   ) {
     super(message);
   }
-}
-
-export function json(data: unknown, init?: ResponseInit): Response {
-  return Response.json(data, init);
 }
 
 export function errorResponse(err: unknown): Response {
@@ -31,62 +28,71 @@ export function errorResponse(err: unknown): Response {
   );
 }
 
-export async function requireUid(req: NextRequest): Promise<string> {
+async function verifyRequestToken(
+  req: NextRequest
+): Promise<{ uid: string; claim: unknown } | null> {
   const authHeader = req.headers.get("authorization");
-  if (!authHeader?.startsWith("Bearer ")) {
-    throw new ApiError(401, "Kamu belum terautentikasi.", "unauthenticated");
-  }
+  if (!authHeader?.startsWith("Bearer ")) return null;
   const token = authHeader.slice("Bearer ".length).trim();
-  if (!token || token.length > 4096) {
-    throw new ApiError(401, "Token tidak valid.", "invalid-token");
-  }
+  if (!token || token.length > 4096) return null;
   try {
     const decoded = await getAdminAuth().verifyIdToken(token, true);
-    return decoded.uid;
+    return { uid: decoded.uid, claim: decoded.role };
   } catch {
-    throw new ApiError(401, "Sesi tidak valid, coba muat ulang halaman.", "invalid-token");
+    return null;
   }
 }
 
-export interface AdminContext {
+interface AuthContext {
   uid: string;
-  isAdmin: boolean;
+  claim: unknown;
+  dbRole: string;
+  role: UserRole;
 }
 
-export async function requireAdmin(req: NextRequest): Promise<AdminContext> {
-  const authHeader = req.headers.get("authorization");
-  if (!authHeader?.startsWith("Bearer ")) {
-    throw new ApiError(401, "Kamu belum terautentikasi.", "unauthenticated");
+/** Signed-in + mirror ke users/{uid}: role dipilih rank terendah claim vs DB. */
+async function getAuthContext(req: NextRequest): Promise<AuthContext> {
+  const verified = await verifyRequestToken(req);
+  if (!verified) {
+    throw new ApiError(
+      401,
+      verified === null
+        ? "Kamu belum terautentikasi."
+        : "Sesi tidak valid, coba muat ulang halaman.",
+      "unauthenticated"
+    );
   }
-  const token = authHeader.slice("Bearer ".length).trim();
-  let decodedId = "";
-  try {
-    const decoded = await getAdminAuth().verifyIdToken(token, true);
-    decodedId = decoded.uid;
-    // Custom claim `admin` is only ever set server-side via the Admin SDK
-    // (see /api/admin/setup) — it can never be forged from the browser.
-    if (decoded.admin !== true) {
-      throw new ApiError(403, "Akses ditolak.", "not-admin");
-    }
-  } catch (err) {
-    if (err instanceof ApiError) throw err;
-    throw new ApiError(401, "Sesi tidak valid, coba muat ulang halaman.", "invalid-token");
+  const userDoc = await getAdminDb().collection("users").doc(verified.uid).get();
+  const dbRole = userDoc.data()?.role;
+  const role = effectiveRole(verified.claim, dbRole);
+  return { uid: verified.uid, claim: verified.claim, dbRole, role };
+}
+
+/** Semua signed-in user (termasuk user biasa & anonim). */
+export async function requireUid(req: NextRequest): Promise<string> {
+  return (await getAuthContext(req)).uid;
+}
+
+/** Login email dengan role admin atau owner di claim ATAU database — effective min rank. */
+export async function requireStaff(req: NextRequest): Promise<AuthContext> {
+  const ctx = await getAuthContext(req);
+  if (rank(ctx.role) < 1) {
+    throw new ApiError(403, "Akses ditolak — butuh role admin/owner.", "not-staff");
   }
-  if (decodedId === "") {
-    throw new ApiError(401, "Sesi tidak valid.", "invalid-token");
+  return ctx;
+}
+
+/** Role owner (tertinggi). */
+export async function requireOwner(req: NextRequest): Promise<AuthContext> {
+  const ctx = await getAuthContext(req);
+  if (ctx.role !== "owner") {
+    throw new ApiError(403, "Akses ditolak — hanya untuk owner.", "not-owner");
   }
-  // Belt & suspenders: mirror the claim against users/{uid}.role.
-  const userDoc = await getAdminDb().collection("users").doc(decodedId).get();
-  const role = userDoc.data()?.role;
-  if (role !== "admin") {
-    throw new ApiError(403, "Akses ditolak.", "not-admin");
-  }
-  return { uid: decodedId, isAdmin: true };
+  return ctx;
 }
 
 export async function assertNotBlocked(uid: string): Promise<void> {
-  const db = getAdminDb();
-  const userDoc = await db.collection("users").doc(uid).get();
+  const userDoc = await getAdminDb().collection("users").doc(uid).get();
   if (userDoc.exists && userDoc.data()?.isBlocked === true) {
     throw new ApiError(
       403,
@@ -96,17 +102,19 @@ export async function assertNotBlocked(uid: string): Promise<void> {
   }
 }
 
-export async function ensureUserDoc(uid: string): Promise<AppUser | null> {
+/** Membuat dokumen users/{uid} dengan role default "user" bila belum ada. */
+export async function ensureUserDoc(uid: string): Promise<string> {
   const db = getAdminDb();
   const ref = db.collection("users").doc(uid);
   const snap = await ref.get();
-  if (snap.exists) return snap.data() as AppUser | null;
-  const user: AppUser = {
+  if (snap.exists) {
+    return normalizeUserRole(snap.data()?.role);
+  }
+  await ref.set({
     uid,
     role: "user",
     createdAt: Date.now(),
     isBlocked: false,
-  };
-  await ref.set(user);
-  return user;
+  });
+  return "user";
 }

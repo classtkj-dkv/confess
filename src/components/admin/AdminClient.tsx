@@ -8,7 +8,8 @@ import { useToast } from "@/lib/auth/ToastProvider";
 import { CATEGORIES, getCategory, isCategoryId } from "@/lib/categories";
 import { EmptyState, ErrorState } from "@/components/ui/States";
 import { StatSkeleton } from "@/components/ui/Skeletons";
-import { formatDateTime, formatNumber } from "@/utils/format";
+import { AuthAccountPanel } from "./AuthAccountPanel";
+import { formatDateTime, formatNumber, shortUid } from "@/utils/format";
 
 type Tab =
   | "overview"
@@ -78,12 +79,19 @@ interface AdminUserRow {
   createdAt: number;
 }
 
-function shortUid(uid: string): string {
-  return uid.length > 12 ? `${uid.slice(0, 6)}…${uid.slice(-4)}` : uid;
+interface AdminStatsShape {
+  totalConfessions: number;
+  pendingConfessions: number;
+  publishedConfessions: number;
+  rejectedConfessions: number;
+  totalComments: number;
+  openReports: number;
+  totalUsers: number;
+  last7DaysConfessions: number;
 }
 
 export function AdminClient() {
-  const { isAdmin, loading, configured, uid } = useAuth();
+  const { isAdmin, isOwner, loading, configured, uid } = useAuth();
   const { toast } = useToast();
   const [tab, setTab] = useState<Tab>("overview");
 
@@ -102,16 +110,20 @@ export function AdminClient() {
 
   if (!isAdmin) {
     return (
-      <EmptyState
-        icon="🔐"
-        title="Akses admin diperlukan"
-        description="Halaman ini hanya untuk akun dengan custom claim admin yang diverifikasi server. Baca panduan Setup Admin di README."
-        action={
-          <Link href="/" className="btn-primary">
-            Kembali beranda
-          </Link>
-        }
-      />
+      <div className="space-y-6">
+        <EmptyState
+          icon="🔐"
+          title="Akses admin diperlukan"
+          description="Dashboard hanya untuk akun dengan role admin/owner yang diverifikasi server (custom claim). Pendaftaran baru selalu ber-role user biasa — role naik hanya oleh keputusan owner."
+        />
+        {/* Daftar manual: selalu ber-role user biasa */}
+        <AuthAccountPanel />
+        {uid && (
+          <p className="rounded-xl bg-surface p-4 font-mono text-xs text-muted">
+            UID sesimu: {uid}
+          </p>
+        )}
+      </div>
     );
   }
 
@@ -121,7 +133,8 @@ export function AdminClient() {
         <p className="badge">Kelola CONFESS</p>
         <h1 className="mt-2 text-xl font-bold text-ink">Admin Dashboard</h1>
         <p className="mt-1 text-sm text-muted">
-          Sesi: {shortUid(uid ?? "")} · hak akses: admin (custom claim)
+          Sesi: <strong className="font-mono">{shortUid(uid)}</strong> · role:{" "}
+          <RoleBadge role={isOwner ? "owner" : "admin"} />
         </p>
       </header>
 
@@ -143,7 +156,7 @@ export function AdminClient() {
         ))}
       </div>
 
-      <AdminSection tab={tab} toast={toast} />
+      <AdminSection tab={tab} toast={toast} isOwner={isOwner} />
     </div>
   );
 }
@@ -161,9 +174,11 @@ function StatSkeletonSkeletonList(): React.ReactNode {
 function AdminSection({
   tab,
   toast,
+  isOwner,
 }: {
   tab: Tab;
   toast: ReturnType<typeof useToast>["toast"];
+  isOwner: boolean;
 }) {
   const [stats, setStats] = useState<StatsShape | null>(null);
   const [loadingStats, setLoadingStats] = useState(true);
@@ -232,7 +247,7 @@ function AdminSection({
     case "reports":
       return <ReportRows onAction={onAction} />;
     case "users":
-      return <UserRows onAction={onAction} />;
+      return <UserRows onAction={onAction} isOwner={isOwner} />;
     case "categories":
       return <CategoriesView />;
     case "announcements":
@@ -636,15 +651,32 @@ function ReportRows({
 
 /* ---------------- Users ---------------- */
 
+function RoleBadge({ role }: { role: string }) {
+  const map: Record<string, string> = {
+    owner: "bg-secondary/20 text-secondary",
+    admin: "bg-primary/15 text-primary",
+    user: "bg-surface text-muted",
+  };
+  return (
+    <span className={`badge ${map[role] ?? map.user} font-mono uppercase`}>
+      {role}
+    </span>
+  );
+}
+
 function UserRows({
   onAction,
+  isOwner,
 }: {
   onAction: (type: string, id: string) => Promise<void>;
+  isOwner: boolean;
 }) {
   const [rows, setRows] = useState<AdminUserRow[] | null>(null);
   const [blockedOnly, setBlockedOnly] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const { refreshAuthToken } = useAuth();
+  const { toast: userToast } = useToast();
 
   const refresh = useCallback(async () => {
     setRows(null);
@@ -654,9 +686,19 @@ function UserRows({
     setRows(data.items ?? []);
   }, []);
 
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
+  async function setRole(uid: string, role: string) {
+    setBusy(uid);
+    try {
+      await api("/api/admin/roles", { body: { uid, role } });
+      userToast("success", `Role ${shortUid(uid)} → ${role.toUpperCase()}.`);
+      await refreshAuthToken();
+      void refresh();
+    } catch (err) {
+      userToast("error", err instanceof ApiClientError ? err.message : "Gagal mengubah role.");
+    } finally {
+      setBusy(null);
+    }
+  }
 
   async function act(type: string, id: string) {
     setBusy(id);
@@ -669,14 +711,14 @@ function UserRows({
     if (!rows) return null;
     const list = blockedOnly ? rows.filter((r) => r.isBlocked) : rows;
     const q = search.trim().toLowerCase();
-    const out = q ? list.filter((r) => r.uid.toLowerCase().includes(q)) : list;
-    return out;
+    return q ? list.filter((r) => r.uid.toLowerCase().includes(q)) : list;
   }, [rows, blockedOnly, search]);
 
   return (
     <section className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
-        <h2 className="text-base font-bold text-ink">Pengguna anonim</h2>
+        <h2 className="text-base font-bold text-ink">Pengguna</h2>
+        <span className="badge">ladder: owner &gt; admin &gt; user</span>
         <label className="ml-auto flex items-center gap-2 text-xs text-muted">
           <input
             type="checkbox"
@@ -692,7 +734,7 @@ function UserRows({
           placeholder="Cari UID…"
           maxLength={40}
           className="input !w-44 !py-1.5 text-xs"
-          aria-label="Cari UID_pengguna"
+          aria-label="Cari UID pengguna"
         />
       </div>
 
@@ -703,14 +745,34 @@ function UserRows({
       ) : (
         filtered.map((u) => (
           <div key={u.uid} className="card flex flex-wrap items-center gap-3 p-4">
-            <span className="font-mono text-xs text-ink">{shortUid(u.uid)}</span>
-            <span className="badge">{u.role}</span>
+            <span className="font-mono text-xs text-ink" title={u.uid}>
+              {shortUid(u.uid)}
+            </span>
+            <RoleBadge role={u.role} />
             <span className={`badge ${u.isBlocked ? "text-danger" : "text-success"}`}>
               {u.isBlocked ? "DIBLOKIR" : "AKTIF"}
             </span>
             <span className="ml-auto text-[11px] text-muted">
               {formatDateTime(u.createdAt)}
             </span>
+
+            {isOwner && !u.isBlocked && (
+              <label className="flex items-center gap-2 text-[11px] text-muted">
+                <span className="sr-only">Ubah role {shortUid(u.uid)}</span>
+                <select
+                  value={u.role}
+                  disabled={busy === u.uid}
+                  onChange={(e) => void setRole(u.uid, e.target.value)}
+                  className="input !w-28 !py-1.5 text-xs"
+                >
+                  <option value="user">user</option>
+                  <option value="admin">admin</option>
+                  <option value="owner">owner</option>
+                </select>
+              </label>
+            )}
+            {!isOwner && <span className="text-[11px] text-muted">role hanya diatur owner</span>}
+
             {u.isBlocked ? (
               <button
                 type="button"
@@ -721,18 +783,20 @@ function UserRows({
                 Lepas blokir
               </button>
             ) : (
-              <button
-                type="button"
-                disabled={busy === u.uid}
-                onClick={() => {
-                  if (window.confirm("Blokir akun ini dari mengirim konten?")) {
-                    void act("blockUser", u.uid);
-                  }
-                }}
-                className="btn-danger !py-1.5 text-xs"
-              >
-                Blokir
-              </button>
+              u.role !== "owner" && (
+                <button
+                  type="button"
+                  disabled={busy === u.uid}
+                  onClick={() => {
+                    if (window.confirm("Blokir akun ini dari mengirim konten?")) {
+                      void act("blockUser", u.uid);
+                    }
+                  }}
+                  className="btn-danger !py-1.5 text-xs"
+                >
+                  Blokir
+                </button>
+              )
             )}
           </div>
         ))

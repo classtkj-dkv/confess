@@ -41,3 +41,9 @@ export function charCount(str: string): number {
 export function dedupe<T>(arr: T[]): T[] {
   return Array.from(new Set(arr));
 }
+
+/** UID pendek untuk tampilan: 6 huruf awal + … + 4 akhir. */
+export function shortUid(uid: string | null | undefined): string {
+  if (!uid) return "";
+  return uid.length > 12 ? `${uid.slice(0, 6)}…${uid.slice(-4)}` : uid;
+}

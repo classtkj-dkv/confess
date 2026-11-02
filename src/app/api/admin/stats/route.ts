@@ -1,12 +1,12 @@
 import type { NextRequest } from "next/server";
-import { errorResponse, requireAdmin } from "@/lib/security/apiHelpers";
+import { errorResponse, requireStaff } from "@/lib/security/apiHelpers";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest): Promise<Response> {
   try {
-    await requireAdmin(req);
+    await requireStaff(req);
     const { getAdminDb } = await import("@/lib/firebase/admin");
     const db = getAdminDb();
     const since = Date.now() - 7 * 24 * 60 * 60 * 1000;

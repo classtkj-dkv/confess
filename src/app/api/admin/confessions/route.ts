@@ -1,5 +1,5 @@
 import type { NextRequest } from "next/server";
-import { errorResponse, requireAdmin } from "@/lib/security/apiHelpers";
+import { errorResponse, requireStaff } from "@/lib/security/apiHelpers";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { isCategoryId } from "@/lib/categories";
 
@@ -14,7 +14,7 @@ const DEFAULT_PAGE_SIZE = 20;
  */
 export async function GET(req: NextRequest): Promise<Response> {
   try {
-    await requireAdmin(req);
+    await requireStaff(req);
     const db = getAdminDb();
     const url = new URL(req.url);
     const status = url.searchParams.get("status") ?? "ALL";
