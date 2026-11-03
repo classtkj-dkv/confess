@@ -1,9 +1,9 @@
 import type { NextRequest } from "next/server";
-import { getAdminDb } from "@/lib/firebase/admin";
+import { getAdminRtdb } from "@/lib/firebase/admin";
+import { touchAdmin } from "@/lib/security/audit";
 import {
   ApiError,
   assertNotBlocked,
-  ensureUserDoc,
   errorResponse,
   requireUid,
 } from "@/lib/security/apiHelpers";
@@ -13,7 +13,6 @@ import { sanitizeText } from "@/lib/security/sanitize";
 import { validateConfessionInput } from "@/lib/validations";
 import { getAdminSettings } from "@/lib/firebase/settings";
 
-const CONFESSION_MAX_LENGTH = 1000;
 const RECENT_WINDOW_MS = 30 * 60 * 1000;
 
 export const runtime = "nodejs";
@@ -23,7 +22,6 @@ export async function POST(req: NextRequest): Promise<Response> {
   try {
     const uid = await requireUid(req);
     await assertNotBlocked(uid);
-    await ensureUserDoc(uid);
 
     const settings = await getAdminSettings();
     if (settings.maintenanceMode) {
@@ -31,6 +29,13 @@ export async function POST(req: NextRequest): Promise<Response> {
         503,
         "CONFESS sedang dalam mode perawatan. Coba lagi nanti.",
         "maintenance"
+      );
+    }
+    if (!settings.allowConfessions) {
+      throw new ApiError(
+        503,
+        "Pengiriman confession sedang dinonaktifkan admin.",
+        "confessions-disabled"
       );
     }
 
@@ -57,61 +62,73 @@ export async function POST(req: NextRequest): Promise<Response> {
       throw new ApiError(400, "Confession harus memuat kesan bermakna, bukan simbol saja.");
     }
 
-    const db = getAdminDb();
+    const db = getAdminRtdb();
+    const maxLen = settings.maxConfessionLength;
+    if (Array.from(message).length > maxLen) {
+      throw new ApiError(400, `Confession maksimal ${maxLen.toLocaleString("id-ID")} karakter.`);
+    }
 
-    // Rate limit: max 5 confessions per UID per day.
+    // Rate limit: dailySubmissionLimit confession per UID per hari.
     const rl = await checkRateLimit({
       scope: "confession",
       uid,
-      limit: RATE_LIMITS.confessionPerDay.limit,
+      limit: settings.dailySubmissionLimit,
       windowMs: RATE_LIMITS.confessionPerDay.windowMs,
     });
     if (!rl.allowed) {
       throw new ApiError(
         429,
-        "Batas 5 confession per hari sudah tercapai. Coba lagi besok.",
+        `Batas ${settings.dailySubmissionLimit} confession per hari sudah tercapai. Coba lagi besok.`,
         "rate-limited"
       );
     }
 
     // Duplicate submission protection within 30 minutes.
-    const dupCheck = db
-      .collection("confessions")
-      .where("authorUid", "==", uid)
-      .where("createdAt", ">", Date.now() - RECENT_WINDOW_MS)
-      .limit(20);
-    const dup = await dupCheck.get();
-    if (!dup.empty) {
+    const dup = await db
+      .ref("confessions")
+      .orderByChild("authorUid")
+      .equalTo(uid)
+      .limitToLast(20)
+      .get();
+    if (dup.exists()) {
       const lower = message.toLowerCase().replace(/\s+/g, " ");
-      for (const d of dup.docs) {
-        const prev = String(d.data()?.messageLower ?? "");
-        if (prev === lower) {
-          throw new ApiError(409, "Confession yang sama baru saja kamu kirim.", "duplicate");
+      const since = Date.now() - RECENT_WINDOW_MS;
+      let dupFound = false;
+      dup.forEach((d) => {
+        const v = d.val() as Record<string, unknown>;
+        if (Number(v.createdAt ?? 0) > since && String(v.messageLower ?? "") === lower) {
+          dupFound = true;
         }
+      });
+      if (dupFound) {
+        throw new ApiError(409, "Confession yang sama baru saja kamu kirim.", "duplicate");
       }
     }
 
     // Re-check: FINAL sanity trim + length enforcement
-    const finalMessage = sanitizeText(message, CONFESSION_MAX_LENGTH);
+    const finalMessage = sanitizeText(message, maxLen);
     if (Array.from(finalMessage).length < 10) {
       throw new ApiError(400, "Confession minimal 10 karakter.");
     }
 
-    const ref = db.collection("confessions").doc();
+    const ref = db.ref("confessions").push();
+    const now = Date.now();
     await ref.set({
-      id: ref.id,
+      id: ref.key,
       message: finalMessage,
       messageLower: finalMessage.toLowerCase(),
       category,
       authorUid: uid,
-      createdAt: Date.now(),
+      createdAt: now,
+      updatedAt: now,
       status: "PENDING",
       likesCount: 0,
       commentsCount: 0,
     });
+    await touchAdmin();
 
     return Response.json(
-      { ok: true, id: ref.id, status: "PENDING" },
+      { ok: true, id: ref.key, status: "PENDING" },
       { status: 201 }
     );
   } catch (err) {

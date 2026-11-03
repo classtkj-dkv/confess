@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { ConfessionCard } from "@/components/feed/ConfessionCard";
 import { EmptyState } from "@/components/ui/States";
 import { CardSkeleton } from "@/components/ui/Skeletons";
-import { loadTrending } from "@/lib/firebase/feed";
+import { subscribeTrending } from "@/lib/firebase/feed";
 import { isFirebaseConfigured } from "@/lib/firebase/client";
 import type { Confession } from "@/types";
 
@@ -20,24 +20,22 @@ export function TrendingClient() {
   const [status, setStatus] = useState<"loading" | "ready" | "empty">("loading");
 
   useEffect(() => {
-    let alive = true;
     if (!isFirebaseConfigured) {
       setStatus("empty");
-      return () => {
-        alive = false;
-      };
+      return;
     }
     setStatus("loading");
-    loadTrending(days, 10)
-      .then((res) => {
-        if (!alive) return;
+    // Realtime; listener dilepas saat periode berubah / komponen dilepas.
+    const unsub = subscribeTrending(
+      days,
+      10,
+      (res) => {
         setItems(res);
         setStatus(res.length === 0 ? "empty" : "ready");
-      })
-      .catch(() => alive && setStatus("empty"));
-    return () => {
-      alive = false;
-    };
+      },
+      () => setStatus("empty")
+    );
+    return unsub;
   }, [days]);
 
   return (

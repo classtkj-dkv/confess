@@ -1,94 +1,110 @@
 # CONFESS — School Edition
 
-Platform confession anonim untuk lingkungan sekolah (<1.000 pengguna). Dibangun
-dengan Next.js (App Router), TypeScript, Tailwind CSS, Firebase Auth
-(anonymous), Firestore, dan Firebase Admin SDK. Server memvalidasi seluruh
-operasi tulis — klien tidak pernah berhak menulis langsung ke Firestore.
+Platform confession anonim untuk lingkungan sekolah (<1.000 pengguna). Next.js
+(App Router) + TypeScript + Tailwind, **Firebase Authentication** dan
+**Firebase Realtime Database (RTDB)** sebagai satu-satunya database. Seluruh
+operasi tulis lewat API routes (Admin SDK); browser hanya membaca data publik
+secara realtime (`onValue`).
 
-## Instalasi project
+## Instalasi
 
 ```bash
 npm install
-cp .env.example .env.local   # isi semua nilai, lihat bagian Environment Variables
+cp .env.example .env.local   # isi semua nilai (lihat Environment Variables)
 npm run dev                  # http://localhost:3000
 ```
 
-Build production: `npm run build && npm start`.
+Build produksi: `npm run build && npm start`.
 
 ## Setup Firebase
 
-1. Buka https://console.firebase.google.com dan buat project (mis. `confess-sekolah`).
-2. Daftarkan dua aplikasi:
-   - **Web app** untuk klien (Authentication + Firestore combine via satu config).
-   - **Service account** untuk Admin SDK (bumper di bagian bawah).
-3. Aktifkan **Authentication → Sign-in method → Anonymous**.
-4. Aktifkan **Firestore Database** (mode production).
-5. (Opsional) aktifkan **Firestore → TTL policy** pada field `expiresAt`
-   collection `rateLimits` agar jendela rate-limit terhapus otomatis.
+1. Buat project di https://console.firebase.google.com, daftarkan **Web app**.
+2. **Authentication → Sign-in method:** aktifkan **Email/Password** dan **Anonymous**.
+   Tambahkan domain Vercel-mu di Authentication → Settings → Authorized domains.
+3. **Build → Realtime Database → Create database.** Salin **URL lengkap**-nya
+   (mis. `https://xxx-default-rtdb.asia-southeast1.firebasedatabase.app`) ke
+   `NEXT_PUBLIC_FIREBASE_DATABASE_URL`. URL yang sama dipakai Web SDK dan Admin SDK.
+4. **Rules:** tab Rules → tempel isi `database.rules.json` → Publish.
+   (Jangan pernah memakai `".read": true, ".write": true` di root.)
+5. **Project settings → Service accounts → Generate new private key** untuk
+   `FIREBASE_ADMIN_*`.
 
-## Setup Firestore
+## Struktur database
 
-Collection yang dipakai: `confessions`, `comments`, `reactions`, `reports`,
-`users`, `settings` (doc id `app`), `rateLimits`. Struktur field mengikuti
-spesifikasi di prompt.txt — server men-set field `status`, counters
-(`likesCount`, `commentsCount`), dan `messageLower` untuk pencarian prefix.
+```
+users/{uid}            displayName, email, role, status, isBlocked, createdAt, updatedAt
+confessions/{id}       PRIVAT: message, messageLower, category, authorUid, status,
+                       likesCount, commentsCount, createdAt, updatedAt
+comments/{id}          PRIVAT: confessionId, authorUid, message, status, createdAt
+public/confessions/{id}        proyeksi publik confession berstatus PUBLISHED (tanpa authorUid)
+public/comments/{confId}/{id}  komentar VISIBLE (tanpa authorUid)
+reactions/{confId}/{uid}       type, createdAt   (hanya pemilik yang bisa baca)
+reports/{id}           confessionId, reporterUid, reason, detail, status, createdAt
+settings/general       websiteName, announcement, maintenanceMode, allowComments,
+                       allowConfessions, maxConfessionLength, dailySubmissionLimit
+audit_logs/{id}        actorUid, action, target, timestamp
+stats                  snapshot ringkasan (diperbarui saat dashboard dibuka)
+meta/adminTick         sinyal realtime dashboard (dinaikkan server di tiap mutasi)
+rateLimits/*           hanya server
+```
 
-## Setup Authentication
+**Kenapa ada `public/*`?** RTDB tidak bisa menyembunyikan satu field (`authorUid`)
+dari pembaca node. Karena itu data yang boleh dilihat pengunjung disalin server
+ke `public/*` hanya saat disetujui; node privat hanya terbaca staff.
+Status memakai `PUBLISHED` (bukan "APPROVED") agar kompatibel dengan data lama.
+`announcements/` disiapkan di rules tetapi pengumuman aktif saat ini satu
+teks di `settings/general.announcement`.
 
-- **Daftar manual (email + password)** tersedia di halaman `/admin` (panel
-  "Daftar akun") dan bisa dipakai siapa pun. Setiap akun baru otomatis
-  ber-role **user** biasa — tidak bisa memilih role saat mendaftar.
-- Anonymous Authentication juga diaktifkan sebagai fallback akses anonim:
-  pengunjung yang tidak mendaftar tetap bisa confession via akun anonim yang
-  dibuat otomatis. Bila pengunjung anonim kemudian mendaftar, kredensial email
-  di-link ke akun anonim tersebut (confession lama tetap miliknya).
-- Identitas muka pengguna tidak pernah tampil publik — UID hanya dipakai
-  server untuk rate limiting, dedup like, dan pelaporan.
+## Role & otorisasi
 
-### Role ladder: owner > admin > user
+Ladder: **owner > admin > moderator > user**.
 
 | Role | Akses |
 | --- | --- |
-| `owner` | Sama seperti admin (tingkat tertinggi, tidak bisa diblokir) |
-| `admin` | Moderasi confession/komentar, tangani laporan, blokir `user` |
+| `owner` | Semua fitur admin + mengubah role akun lain |
+| `admin` | Moderasi, pengguna & blokir, pengaturan situs, pengumuman, audit log |
+| `moderator` | Moderasi confession/komentar/laporan + lihat statistik |
 | `user` | Confession, komentar, reaksi, laporan (default pendaftar baru) |
 
-### Cara kerja role (diatur lewat Realtime Database)
+- Otorisasi memakai **Firebase Custom Claim `role`** (diset server via Admin SDK).
+  Role efektif = claim **yang juga sama** dengan `users/{uid}/role` di RTDB;
+  kalau berbeda → diperlakukan `user`. Jadi: mengedit role di database **tidak**
+  bisa menaikkan hak akses (hanya bisa mencabutnya), dan role yang dicabut
+  langsung berlaku di endpoint server **dan** Security Rules.
+- Ubah role: Dashboard → **Users** (khusus owner) → `POST /api/admin/roles`:
+  verifikasi owner → set claim → (turun role: `revokeRefreshTokens`) → update
+  `users/{uid}/role` → tulis `audit_logs`. Dashboard & klien target berubah realtime.
+- **Owner pertama:** isi `ADMIN_SETUP_SECRET` di Vercel, daftar/masuk di `/admin`
+  dengan email, lalu pakai panel "Aktifkan owner pertama". Hanya berfungsi selama
+  belum ada owner.
 
-- Daftar di website → akun otomatis dicatat di **Realtime Database**
-  `users/{uid}` dengan `role: "user"` (plus `email`, `displayName`,
-  `createdAt`, `isBlocked`).
-- **Satu-satunya sumber role = `users/{uid}/role`.** Tidak ada custom claim,
-  endpoint `/api/admin/roles`, maupun `/api/admin/setup`.
-- Untuk meng-acc / mengubah role: **Firebase Console → Realtime Database →
-  Data → `users` →** pilih akun (cocokkan lewat `email`) **→ ubah `role`**
-  jadi `user`, `admin`, atau `owner`. Berlaku seketika, tanpa logout/login.
-- Nilai role salah ketik / kosong dianggap `user`.
-- **Wajib** pasang rules dari `database.rules.json` (tab Rules → Publish).
-  Rules itu melarang semua tulis dari browser, jadi user tidak bisa menaikkan
-  role sendiri; server (Admin SDK) tetap bisa menulis.
-- Dashboard `/admin → Users` hanya menampilkan role (read-only) + blokir akun.
+## Realtime
 
-## Setup Admin (owner/admin pertama)
+Listener `onValue` (selalu di-unsubscribe saat unmount, tanpa listener ganda):
+beranda, feed (halaman pertama), trending, detail confession + komentar + jumlah
+like, status like milik user, settings/maintenance/pengumuman (satu listener
+bersama via `useSettings`), dan role akun sendiri. Dashboard admin memuat ulang
+tab aktif setiap `meta/adminTick` berubah (confession baru, aksi moderasi,
+perubahan role, pengaturan).
 
-1. Isi `NEXT_PUBLIC_FIREBASE_DATABASE_URL` (URL lengkap Realtime Database) di
-   Vercel, lalu redeploy.
-2. Publish `database.rules.json` di Realtime Database → Rules.
-3. Buka `/admin` → **Daftar akun** (email + password). Akun ber-role `user`.
-4. Realtime Database → Data → `users` → akunmu → ubah `role` jadi `owner`.
-5. Refresh `/admin` — dashboard terbuka.
+Maintenance mode: semua halaman publik langsung berganti halaman perawatan
+(staff dan `/admin` tetap bisa diakses).
 
-## Setup Firebase Security Rules
+## Migrasi dari Firestore (sekali jalan)
 
-1. Deploy rules: `npx firebase-tools deploy --only firestore:rules` atau paste
-   isi `firestore.rules` di console → Firestore → Rules.
-2. Deploy composite index: `npx firebase-tools deploy --only firestore:indexes`
-   (file `firestore.indexes.json`).
+```bash
+npm run migrate:firestore -- --dry-run   # hitung & validasi, tanpa menulis
+npm run migrate:firestore                # backup JSON → tulis RTDB → verifikasi jumlah
+```
+
+Script `scripts/migrate-firestore-to-rtdb.mjs`: mempertahankan ID dokumen,
+mengubah Timestamp → Unix ms, membangun `public/*`, memindahkan `settings/app`
+→ `settings/general`, menyetel Custom Claim untuk akun admin/owner lama, dan
+membandingkan jumlah data sebelum/sesudah (exit code 1 bila tidak cocok).
+**Firestore tidak dihapus** — hapus manual setelah kamu yakin. Setelah
+terverifikasi, hapus file script ini (satu-satunya yang masih menyentuh Firestore).
 
 ## Environment Variables
-
-Isi `.env.local` untuk pengembangan; untuk produksi isi di Vercel →
-Settings → Environment Variables (Production + Preview + Development).
 
 | Variabel | Sifat | Keterangan |
 | --- | --- | --- |
@@ -98,49 +114,44 @@ Settings → Environment Variables (Production + Preview + Development).
 | `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET` | klien | Web config |
 | `NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID` | klien | Web config |
 | `NEXT_PUBLIC_FIREBASE_APP_ID` | klien | Web config |
+| `NEXT_PUBLIC_FIREBASE_DATABASE_URL` | klien + server | URL lengkap Realtime Database (wajib) |
 | `FIREBASE_ADMIN_PROJECT_ID` | rahasia | Service account `project_id` |
 | `FIREBASE_ADMIN_CLIENT_EMAIL` | rahasia | Service account `client_email` |
-| `FIREBASE_ADMIN_PRIVATE_KEY` | rahasia | Service account `private_key` (escape `\n` saat di Vercel) |
+| `FIREBASE_ADMIN_PRIVATE_KEY` | rahasia | Service account `private_key` (escape `\n` di Vercel) |
+| `ADMIN_SETUP_SECRET` | rahasia | Kunci bootstrap owner pertama (≥16 karakter) |
 | `NEXT_PUBLIC_SITE_URL` | klien | domain publik untuk metadata SEO |
+
+Jangan commit `.env.local` atau service account JSON ke GitHub.
 
 ## Deployment Vercel
 
-1. Push repo ke GitHub (jangan commit `.env.local` — sudah di-`.gitignore`).
-2. Vercel → New Project → Import repo. Framework otomatis Next.js.
-3. Add semua Environment Variables di atas (pastikan persis, tanpa
-   pembungkus `export`).
-4. Deploy. Set konfigurasi domain di bagian footer khusus (`NEXT_PUBLIC_SITE_URL`).
-5. Sanity check post-deploy:
-   - `/` memuat feed (pull dari Firestore, public)
-   - `/confess` (POST kini terlarang — harus tembus via envelope server)
-   - `/admin` hanya membuka halaman `overview` untuk akun ber-role admin/owner di database.
-   - `/api/settings` → JSON `{"maintenanceMode":false,...}`.
+1. Push repo ke GitHub (tanpa credential).
+2. Vercel → New Project → import repo; isi semua Environment Variables di atas.
+3. Deploy, publish `database.rules.json`, lalu cek: `/` memuat feed, `/confess`
+   mengirim confession (status PENDING), `/admin` terbuka untuk staff,
+   `/api/settings` mengembalikan JSON.
 
-## Catatan keamanan
+## Keamanan
 
-- Semua operasi tulis via API routes `src/app/api/**` yang memakai Admin SDK,
-  bukan Firestore client SDK.
-- Rate limit server: 5 confession/hari, 10 komentar/jam, 1 like
-  per (uid, confession), laporan unik per (uid, confession), maks 10
-  laporan/hari.
-- Input disanitasi (`src/lib/security/sanitize.ts`) dan divalidasi via
-  `src/lib/validations`. React escape default + output tulisan sebagai teks
-  biasa — tanpa `dangerouslySetInnerHTML`.
-- Role dibaca server dari `users/{uid}/role` (Firestore) di setiap request;
-  client tidak punya izin menulis ke koleksi `users`.
-- Report mensupport 6 alasan, antar lain bullying, harassment, pemerasan,
-  privasi, dan konten tidak pantas.
+- Semua tulis lewat `src/app/api/**` (Admin SDK); Security Rules menolak semua
+  tulis dari browser, sehingga `likesCount`/`commentsCount`/role tidak bisa dimanipulasi.
+- Pengunjung hanya membaca `public/*` dan `settings/general`; data privat
+  (`authorUid`, laporan, audit, users) hanya terbaca staff/admin sesuai role.
+- Rate limit server (transaction RTDB): confession per hari (default 5, bisa
+  diatur di settings), 10 komentar/jam, 10 laporan/hari, 1 like per (uid, confession).
+- Input disanitasi (`src/lib/security/sanitize.ts`) dan divalidasi
+  (`src/lib/validations`). Tanpa `dangerouslySetInnerHTML`.
+- Rules + server sama-sama mensyaratkan claim `role` cocok dengan `users/{uid}/role`.
 
 ## Struktur
 
 ```
 src/app/           halaman publik + admin + API routes
 src/components/    layout, feed, forms, admin, ui
-src/lib/           firebase, auth, security, validations
-src/hooks/         (diperuntukkan fitur tambahan)
+src/lib/           firebase (client/admin/feed/settings), auth, security, validations
 src/types/         tipe domain
-src/utils/         helper format
-public/            ikon & gambar statis
+scripts/           migrasi sekali jalan
+database.rules.json  Security Rules RTDB
 ```
 
 ## Perintah

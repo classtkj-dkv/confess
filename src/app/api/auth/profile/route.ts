@@ -20,9 +20,9 @@ export const dynamic = "force-dynamic";
  */
 export async function POST(req: NextRequest): Promise<Response> {
   try {
-    const { uid, email } = await requireAuth(req);
+    const { uid, email, role } = await requireAuth(req);
     await assertNotBlocked(uid);
-    const role = await ensureUserDoc(uid, email);
+    await ensureUserDoc(uid, email);
 
     let body: unknown = {};
     try {

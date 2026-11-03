@@ -2,14 +2,15 @@ export type ConfessionStatus = "PENDING" | "PUBLISHED" | "REJECTED";
 export type CommentStatus = "VISIBLE" | "HIDDEN";
 export type ReportStatus = "OPEN" | "RESOLVED" | "DISMISSED";
 export type ReactionType = "like";
-/** Role ladder: owner (paling tinggi) > admin > user. */
-export type UserRole = "user" | "admin" | "owner";
+/** Role ladder: owner > admin > moderator > user. */
+export type UserRole = "user" | "moderator" | "admin" | "owner";
 
 export interface Confession {
   id: string;
   message: string;
   category: CategoryId;
-  authorUid: string;
+  /** Hanya ada di data privat (staff/server); tidak pernah di data publik. */
+  authorUid?: string;
   createdAt: number;
   status: ConfessionStatus;
   likesCount: number;
@@ -19,7 +20,7 @@ export interface Confession {
 export interface ConfessionComment {
   id: string;
   confessionId: string;
-  authorUid: string;
+  authorUid?: string;
   message: string;
   createdAt: number;
   status: CommentStatus;
@@ -51,9 +52,13 @@ export interface AppUser {
 }
 
 export interface AppSettings {
+  websiteName: string;
   maintenanceMode: boolean;
   announcement: string;
   allowComments: boolean;
+  allowConfessions: boolean;
+  maxConfessionLength: number;
+  dailySubmissionLimit: number;
 }
 
 export type CategoryId =

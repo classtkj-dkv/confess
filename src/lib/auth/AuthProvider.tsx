@@ -60,12 +60,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
     const auth = getAuthClient();
-    let unsubDoc: (() => void) | null = null;
+    let unsubRole: (() => void) | null = null;
 
     const unsubAuth = onAuthStateChanged(auth, (user) => {
-      // Lepas listener dokumen user sebelumnya (ganti akun / logout).
-      unsubDoc?.();
-      unsubDoc = null;
+      // Lepas listener role akun sebelumnya (ganti akun / logout).
+      unsubRole?.();
+      unsubRole = null;
 
       if (!user) {
         profileSynced.current = null;
@@ -73,58 +73,67 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      const apply = (dbRole: unknown) => {
-        const role = normalizeUserRole(dbRole);
+      let currentRole: UserRole = "user";
+      let cancelled = false;
+
+      const apply = (role: UserRole) => {
+        if (cancelled) return;
+        currentRole = role;
         setState({
           uid: user.uid,
           isAnonymous: user.isAnonymous,
           role,
-          isAdmin: role === "admin" || role === "owner",
+          isAdmin: role === "moderator" || role === "admin" || role === "owner",
           isOwner: role === "owner",
           loading: false,
           configured: true,
         });
       };
 
-      // Role dibaca dari Realtime Database users/{uid} dan diikuti realtime:
-      // ubah role di Firebase Console → UI langsung ikut berubah.
-      const syncProfile = () =>
-        api("/api/auth/profile", { body: {} })
-          .then((res) => apply(res?.role))
-          .catch(() => apply("user"));
+      // Otorisasi = Custom Claim `role` di ID token (diset server).
+      const readClaim = async (force: boolean) => {
+        try {
+          const res = await user.getIdTokenResult(force);
+          apply(normalizeUserRole(res.claims.role));
+        } catch {
+          // Token dicabut (role diturunkan) / offline → perlakukan sebagai user.
+          apply("user");
+        }
+      };
 
-      try {
-        unsubDoc = onValue(
-          ref(getRtdb(), `users/${user.uid}`),
-          (snap) => {
-            const data = snap.val() as Record<string, unknown> | null;
-            apply(data ? data.role : "user");
-            // Akun email yang belum tercatat → buat (role "user").
-            if (
-              !data &&
-              !user.isAnonymous &&
-              profileSynced.current !== user.uid
-            ) {
-              profileSynced.current = user.uid;
-              api("/api/auth/profile", { body: {} }).catch(() => {
-                profileSynced.current = null;
-              });
-            }
-          },
-          () => {
-            // Rules menolak / database belum dikonfigurasi → minta ke server.
-            if (!user.isAnonymous) void syncProfile();
-            else apply("user");
+      void readClaim(false);
+
+      // Perubahan role di database (oleh owner) → refresh token agar claim baru
+      // terbaca, UI ikut berubah seketika tanpa reload.
+      unsubRole = onValue(
+        ref(getRtdb(), `users/${user.uid}/role`),
+        (snap) => {
+          const dbRole = normalizeUserRole(snap.val());
+          if (dbRole !== currentRole) void readClaim(true);
+          // Akun email yang belum tercatat → buat profil (role "user").
+          if (
+            !snap.exists() &&
+            !user.isAnonymous &&
+            profileSynced.current !== user.uid
+          ) {
+            profileSynced.current = user.uid;
+            api("/api/auth/profile", { body: {} }).catch(() => {
+              profileSynced.current = null;
+            });
           }
-        );
-      } catch {
-        if (!user.isAnonymous) void syncProfile();
-        else apply("user");
-      }
+        },
+        () => undefined
+      );
+
+      const prevUnsub = unsubRole;
+      unsubRole = () => {
+        cancelled = true;
+        prevUnsub?.();
+      };
     });
 
     return () => {
-      unsubDoc?.();
+      unsubRole?.();
       unsubAuth();
     };
   }, []);

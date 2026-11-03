@@ -9,12 +9,45 @@ import { Sidebar } from "./Sidebar";
 import { MobileNav } from "./MobileNav";
 import { SearchBar } from "./SearchBar";
 import { AnnouncementBanner } from "./AnnouncementBanner";
+import { useAuth } from "@/lib/auth/AuthProvider";
+import { useSettings } from "@/lib/firebase/useSettings";
 export interface AppShellProps {
   children: React.ReactNode;
 }
 
 export function AppShell({ children }: AppShellProps) {
   const pathname = usePathname();
+  const { settings } = useSettings();
+  const { isAdmin, loading } = useAuth();
+
+  // Maintenance realtime: semua halaman publik langsung berganti halaman
+  // perawatan; staff & halaman /admin tetap bisa diakses.
+  if (
+    settings.maintenanceMode &&
+    !loading &&
+    !isAdmin &&
+    !pathname.startsWith("/admin")
+  ) {
+    return (
+      <main className="grid min-h-dvh place-items-center px-6 text-center">
+        <div className="max-w-md space-y-4">
+          <div aria-hidden className="text-5xl">🛠️</div>
+          <h1 className="text-2xl font-extrabold text-ink">
+            {settings.websiteName} sedang dalam perawatan
+          </h1>
+          <p className="text-sm leading-relaxed text-muted">
+            Kami sedang merapikan beberapa hal. Halaman ini akan kembali
+            otomatis begitu perawatan selesai — tidak perlu refresh.
+          </p>
+          {settings.announcement.trim() && (
+            <p className="rounded-xl border border-hairline bg-surface p-3 text-sm text-ink">
+              📣 {settings.announcement.trim()}
+            </p>
+          )}
+        </div>
+      </main>
+    );
+  }
 
   return (
     <div className="flex min-h-dvh">

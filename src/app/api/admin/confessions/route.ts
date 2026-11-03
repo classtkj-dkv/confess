@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
 import { errorResponse, requireStaff } from "@/lib/security/apiHelpers";
-import { getAdminDb } from "@/lib/firebase/admin";
+import { getAdminRtdb } from "@/lib/firebase/admin";
 import { isCategoryId } from "@/lib/categories";
 
 export const runtime = "nodejs";
@@ -9,13 +9,13 @@ export const dynamic = "force-dynamic";
 const DEFAULT_PAGE_SIZE = 20;
 
 /**
- * Lists confessions for moderation. Returns SAFE projections only —
- * authorUid is never echoed to the client.
+ * Daftar confession untuk moderasi. Hanya proyeksi AMAN —
+ * authorUid tidak pernah dikirim ke klien.
  */
 export async function GET(req: NextRequest): Promise<Response> {
   try {
     await requireStaff(req);
-    const db = getAdminDb();
+    const db = getAdminRtdb();
     const url = new URL(req.url);
     const status = url.searchParams.get("status") ?? "ALL";
     const category = url.searchParams.get("category") ?? "";
@@ -25,37 +25,37 @@ export async function GET(req: NextRequest): Promise<Response> {
     );
     const page = Math.max(1, Number(url.searchParams.get("page")) || 1);
 
-    const base = db.collection("confessions");
-    let queryRef = base.orderBy("createdAt", "desc");
+    const hasStatus =
+      status === "PENDING" || status === "PUBLISHED" || status === "REJECTED";
+    const hasCategory = isCategoryId(category);
+    const ref = db.ref("confessions");
 
-    if (status === "PENDING" || status === "PUBLISHED" || status === "REJECTED") {
-      queryRef = db.collection("confessions").where("status", "==", status).orderBy("createdAt", "desc");
-    }
-    if (isCategoryId(category)) {
-      queryRef = queryRef.where("category", "==", category);
-    }
+    // Satu orderBy saja di RTDB: pilih yang paling selektif, sisanya difilter di memori.
+    const snap = hasStatus
+      ? await ref.orderByChild("status").equalTo(status).get()
+      : hasCategory
+        ? await ref.orderByChild("category").equalTo(category).get()
+        : await ref.orderByChild("createdAt").limitToLast(page * pageSize).get();
 
-    const snap = await queryRef
-      .offset((page - 1) * pageSize)
-      .limit(pageSize)
-      .get();
+    const rows: Array<Record<string, unknown>> = [];
+    snap.forEach((c) => {
+      rows.push({ id: c.key, ...(c.val() as Record<string, unknown>) });
+    });
+    const filtered = rows
+      .filter((r) => (hasStatus && hasCategory ? r.category === category : true))
+      .sort((a, b) => Number(b.createdAt ?? 0) - Number(a.createdAt ?? 0));
 
-    const items = snap.docs.map((d) => {
-      const data = d.data() as Record<string, unknown>;
-      const created = data.createdAt as { toMillis?: () => number } | number;
-      return {
-        id: d.id,
+    const items = filtered
+      .slice((page - 1) * pageSize, page * pageSize)
+      .map((data) => ({
+        id: String(data.id),
         message: String(data.message ?? ""),
         category: String(data.category ?? "random"),
-        createdAt:
-          typeof created === "number"
-            ? created
-            : created?.toMillis?.() ?? 0,
+        createdAt: Number(data.createdAt ?? 0),
         status: String(data.status ?? "PENDING"),
         likesCount: Number(data.likesCount ?? 0),
         commentsCount: Number(data.commentsCount ?? 0),
-      };
-    });
+      }));
 
     return Response.json({ items, page, pageSize });
   } catch (err) {

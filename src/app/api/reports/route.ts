@@ -1,5 +1,6 @@
 import type { NextRequest } from "next/server";
-import { getAdminDb } from "@/lib/firebase/admin";
+import { getAdminRtdb } from "@/lib/firebase/admin";
+import { touchAdmin } from "@/lib/security/audit";
 import {
   ApiError,
   assertNotBlocked,
@@ -30,20 +31,16 @@ export async function POST(req: NextRequest): Promise<Response> {
       throw new ApiError(400, "Alasan laporan tidak valid.");
     }
 
-    const db = getAdminDb();
-    const confessionSnap = await db.collection("confessions").doc(input.confessionId).get();
-    if (!confessionSnap.exists) {
+    const db = getAdminRtdb();
+    const confessionSnap = await db.ref(`confessions/${input.confessionId}/status`).get();
+    if (!confessionSnap.exists()) {
       throw new ApiError(404, "Confession tidak ditemukan.");
     }
 
-    // Dupe protection: same reporter + confession = one report only.
-    const existing = await db
-      .collection("reports")
-      .where("confessionId", "==", input.confessionId)
-      .where("reporterUid", "==", uid)
-      .limit(1)
-      .get();
-    if (!existing.empty) {
+    // Dupe protection: id laporan deterministik per (confession, reporter).
+    const reportId = `${input.confessionId}_${uid}`;
+    const existing = await db.ref(`reports/${reportId}`).get();
+    if (existing.exists()) {
       return Response.json({ ok: true, duplicate: true }, { status: 200 });
     }
 
@@ -57,18 +54,18 @@ export async function POST(req: NextRequest): Promise<Response> {
       throw new ApiError(429, "Batas laporan harian tercapai.");
     }
 
-    const ref = db.collection("reports").doc();
-    await ref.set({
-      id: ref.id,
+    await db.ref(`reports/${reportId}`).set({
+      id: reportId,
       confessionId: input.confessionId,
       reporterUid: uid,
       reason: input.reason,
-      detail: input.detail,
+      detail: input.detail ?? "",
       createdAt: Date.now(),
       status: "OPEN",
     });
+    await touchAdmin();
 
-    return Response.json({ ok: true, id: ref.id }, { status: 201 });
+    return Response.json({ ok: true, id: reportId }, { status: 201 });
   } catch (err) {
     return errorResponse(err);
   }

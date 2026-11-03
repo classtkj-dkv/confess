@@ -1,5 +1,6 @@
 import type { NextRequest } from "next/server";
 import { errorResponse, requireStaff } from "@/lib/security/apiHelpers";
+import { getAdminRtdb } from "@/lib/firebase/admin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -7,32 +8,46 @@ export const dynamic = "force-dynamic";
 export async function GET(req: NextRequest): Promise<Response> {
   try {
     await requireStaff(req);
-    const { getAdminDb, getAdminRtdb } = await import("@/lib/firebase/admin");
-    const db = getAdminDb();
+    const db = getAdminRtdb();
     const since = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    const byStatus = (path: string, status: string) =>
+      db.ref(path).orderByChild("status").equalTo(status).get();
 
-    const [totalConf, pending, published, rejected, totalComments, openReports, users, recentConf] =
+    const [pending, published, rejected, comments, openReports, users, recent] =
       await Promise.all([
-        db.collection("confessions").count().get(),
-        db.collection("confessions").where("status", "==", "PENDING").count().get(),
-        db.collection("confessions").where("status", "==", "PUBLISHED").count().get(),
-        db.collection("confessions").where("status", "==", "REJECTED").count().get(),
-        db.collection("comments").count().get(),
-        db.collection("reports").where("status", "==", "OPEN").count().get(),
-        getAdminRtdb().ref("users").get(),
-        db.collection("confessions").where("createdAt", ">", since).count().get(),
+        byStatus("confessions", "PENDING"),
+        byStatus("confessions", "PUBLISHED"),
+        byStatus("confessions", "REJECTED"),
+        db.ref("comments").get(),
+        byStatus("reports", "OPEN"),
+        db.ref("users").get(),
+        db.ref("confessions").orderByChild("createdAt").startAt(since).get(),
       ]);
 
-    return Response.json({
-      totalConfessions: totalConf.data().count,
-      pendingConfessions: pending.data().count,
-      publishedConfessions: published.data().count,
-      rejectedConfessions: rejected.data().count,
-      totalComments: totalComments.data().count,
-      openReports: openReports.data().count,
+    const stats = {
+      totalConfessions:
+        pending.numChildren() + published.numChildren() + rejected.numChildren(),
+      pendingConfessions: pending.numChildren(),
+      publishedConfessions: published.numChildren(),
+      rejectedConfessions: rejected.numChildren(),
+      totalComments: comments.numChildren(),
+      openReports: openReports.numChildren(),
       totalUsers: users.numChildren(),
-      last7DaysConfessions: recentConf.data().count,
+      last7DaysConfessions: recent.numChildren(),
+    };
+
+    // Snapshot ringkas agar bisa dilihat langsung di Console (stats/).
+    await db.ref("stats").set({
+      totalUsers: stats.totalUsers,
+      totalConfessions: stats.totalConfessions,
+      pendingConfessions: stats.pendingConfessions,
+      publishedConfessions: stats.publishedConfessions,
+      totalComments: stats.totalComments,
+      totalReports: stats.openReports,
+      updatedAt: Date.now(),
     });
+
+    return Response.json(stats);
   } catch (err) {
     return errorResponse(err);
   }

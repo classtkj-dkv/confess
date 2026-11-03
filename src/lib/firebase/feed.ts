@@ -1,22 +1,19 @@
 "use client";
 
 import {
-  collection,
-  endAt,
-  getDocs,
-  getCountFromServer,
-  limit as fsLimit,
-  orderBy as fsOrderBy,
+  endBefore,
+  get,
+  limitToLast,
+  onValue,
+  orderByChild,
   query,
-  startAfter,
+  ref,
+  equalTo,
   startAt,
-  where,
-  type DocumentData,
-  type Query,
-  type QueryConstraint,
-  type QueryDocumentSnapshot,
-} from "firebase/firestore";
-import { getDb } from "@/lib/firebase/client";
+  endAt,
+  type DataSnapshot,
+} from "firebase/database";
+import { getRtdb } from "@/lib/firebase/client";
 import type {
   CategoryId,
   Confession,
@@ -24,209 +21,269 @@ import type {
   FeedFilter,
 } from "@/types";
 
+/**
+ * Data publik dibaca dari `public/confessions` dan `public/comments/{id}`
+ * (proyeksi tanpa authorUid, hanya yang sudah disetujui). Index: createdAt,
+ * likesCount, category, messageLower (lihat database.rules.json).
+ */
 export const FEED_PAGE_SIZE = 8;
+const POPULAR_POOL = 100;
+const CATEGORY_POOL = 100;
+
+export type Unsubscribe = () => void;
+
+/** Cursor halaman: createdAt+id untuk "terbaru", offset untuk daftar yang diurutkan di memori. */
+export type FeedCursor =
+  | { kind: "time"; createdAt: number; id: string }
+  | { kind: "offset"; offset: number };
 
 export interface FeedPage {
   items: Confession[];
-  cursor: QueryDocumentSnapshot<DocumentData> | null;
+  cursor: FeedCursor | null;
   hasMore: boolean;
 }
 
 interface LoadFeedOptions {
   filter: FeedFilter;
-  cursor?: QueryDocumentSnapshot<DocumentData> | null;
+  cursor?: FeedCursor | null;
   category?: CategoryId | null;
   search?: string | null;
 }
 
-function toConfession(d: QueryDocumentSnapshot<DocumentData>): Confession {
-  const data = d.data() as Record<string, unknown>;
-  const rawCreated = data.createdAt as { toMillis?: () => number } | number;
-  const createdAt =
-    typeof rawCreated === "number"
-      ? rawCreated
-      : typeof rawCreated?.toMillis === "function"
-        ? rawCreated.toMillis()
-        : 0;
+function toConfession(id: string, data: Record<string, unknown>): Confession {
   return {
-    id: d.id,
+    id,
     message: String(data.message ?? ""),
     category: (data.category ?? "random") as Confession["category"],
-    authorUid: String(data.authorUid ?? ""),
-    createdAt,
-    status: (data.status ?? "PENDING") as Confession["status"],
+    createdAt: Number(data.createdAt ?? 0),
+    status: "PUBLISHED",
     likesCount: Number(data.likesCount ?? 0),
     commentsCount: Number(data.commentsCount ?? 0),
   };
 }
 
 function toComment(
-  d: QueryDocumentSnapshot<DocumentData>
+  confessionId: string,
+  id: string,
+  data: Record<string, unknown>
 ): ConfessionComment {
-  const data = d.data() as Record<string, unknown>;
-  const rawCreated = data.createdAt as { toMillis?: () => number } | number;
   return {
-    id: d.id,
-    confessionId: String(data.confessionId ?? ""),
-    authorUid: String(data.authorUid ?? ""),
+    id,
+    confessionId,
     message: String(data.message ?? ""),
-    createdAt: typeof rawCreated === "number" ? rawCreated : rawCreated?.toMillis?.() ?? 0,
-    status: (data.status ?? "VISIBLE") as ConfessionComment["status"],
+    createdAt: Number(data.createdAt ?? 0),
+    status: "VISIBLE",
   };
 }
 
-/** Base constraints shared by every feed query. */
-function baseConstraints(opts: LoadFeedOptions): QueryConstraint[] {
-  const clauses: QueryConstraint[] = [where("status", "==", "PUBLISHED")];
-  if (opts.category) clauses.push(where("category", "==", opts.category));
-  return clauses;
+function snapToConfessions(snap: DataSnapshot): Confession[] {
+  const out: Confession[] = [];
+  snap.forEach((c) => {
+    out.push(toConfession(String(c.key), c.val() as Record<string, unknown>));
+  });
+  return out;
 }
 
+const byNewest = (a: Confession, b: Confession) =>
+  b.createdAt - a.createdAt || (a.id < b.id ? 1 : -1);
+
+function pageFromSorted(sorted: Confession[], offset: number): FeedPage {
+  const items = sorted.slice(offset, offset + FEED_PAGE_SIZE);
+  const hasMore = sorted.length > offset + FEED_PAGE_SIZE;
+  return {
+    items,
+    cursor: hasMore ? { kind: "offset", offset: offset + FEED_PAGE_SIZE } : null,
+    hasMore,
+  };
+}
+
+function confessionsRef() {
+  return ref(getRtdb(), "public/confessions");
+}
+
+/** Memuat satu halaman feed (sekali baca). Untuk realtime halaman pertama pakai subscribeLatest. */
 export async function loadFeed(opts: LoadFeedOptions): Promise<FeedPage> {
   const search = opts.search?.trim().toLowerCase() ?? "";
-  const pageSize = FEED_PAGE_SIZE;
 
   try {
     if (search.length >= 2) {
-      const q = query(
-        collection(getDb(), "confessions"),
-        ...baseConstraints(opts),
-        fsOrderBy("messageLower"),
-        startAt(search),
-        endAt(`${search}\uf8ff`),
-        fsLimit(20)
+      const snap = await get(
+        query(
+          confessionsRef(),
+          orderByChild("messageLower"),
+          startAt(search),
+          endAt(`${search}\uf8ff`)
+        )
       );
-      const snap = await getDocs(q);
+      let items = snapToConfessions(snap);
+      if (opts.category) items = items.filter((c) => c.category === opts.category);
       return {
-        items: snap.docs
-          .map(toConfession)
-          .sort((a, b) => b.createdAt - a.createdAt),
+        items: items.sort(byNewest).slice(0, 20),
         cursor: null,
         hasMore: false,
       };
     }
 
     if (opts.filter === "random") {
-      const countSnap = await getCountFromServer(
-        query(collection(getDb(), "confessions"), ...baseConstraints(opts))
+      const snap = await get(
+        query(confessionsRef(), orderByChild("createdAt"), limitToLast(POPULAR_POOL))
       );
-      const total = countSnap.data().count;
-      if (total === 0) return { items: [], cursor: null, hasMore: false };
-      const maxOffset = Math.max(0, total - pageSize);
-      const jump = Math.floor(Math.random() * (maxOffset + 1));
-      // Firestore v13 removed the `offset()` helper; emulate the jump by
-      // fetching the newest (jump + pageSize) docs and keeping the last window.
-      const q = query(
-        collection(getDb(), "confessions"),
-        ...baseConstraints(opts),
-        fsOrderBy("createdAt", "desc"),
-        fsLimit(jump + pageSize)
-      );
-      const snap = await getDocs(q);
-      const docs = snap.docs;
-      const start = Math.max(0, docs.length - pageSize);
-      return {
-        items: docs.slice(start).map(toConfession),
-        cursor: null,
-        hasMore: false,
-      };
+      let pool = snapToConfessions(snap);
+      if (opts.category) pool = pool.filter((c) => c.category === opts.category);
+      for (let i = pool.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [pool[i], pool[j]] = [pool[j], pool[i]];
+      }
+      return { items: pool.slice(0, FEED_PAGE_SIZE), cursor: null, hasMore: false };
     }
 
-    const ordering: QueryConstraint[] =
-      opts.filter === "popular"
-        ? [fsOrderBy("likesCount", "desc"), fsOrderBy("createdAt", "desc")]
-        : [fsOrderBy("createdAt", "desc")];
+    if (opts.filter === "popular") {
+      const snap = await get(
+        query(
+          confessionsRef(),
+          orderByChild("likesCount"),
+          limitToLast(POPULAR_POOL)
+        )
+      );
+      let pool = snapToConfessions(snap);
+      if (opts.category) pool = pool.filter((c) => c.category === opts.category);
+      pool.sort((a, b) => b.likesCount - a.likesCount || byNewest(a, b));
+      const offset = opts.cursor?.kind === "offset" ? opts.cursor.offset : 0;
+      return pageFromSorted(pool, offset);
+    }
 
-    const constraints: QueryConstraint[] = [
-      ...baseConstraints(opts),
-      ...ordering,
-      fsLimit(pageSize + 1),
-    ];
-    if (opts.cursor) constraints.push(startAfter(opts.cursor));
+    // Terbaru / Semua
+    if (opts.category) {
+      const snap = await get(
+        query(confessionsRef(), orderByChild("category"), equalTo(opts.category))
+      );
+      const sorted = snapToConfessions(snap).sort(byNewest).slice(0, CATEGORY_POOL);
+      const offset = opts.cursor?.kind === "offset" ? opts.cursor.offset : 0;
+      return pageFromSorted(sorted, offset);
+    }
 
-    const q: Query<DocumentData> = query(
-      collection(getDb(), "confessions"),
-      ...constraints
-    );
-
-    const snap = await getDocs(q);
-    const docs = snap.docs;
-    const hasMore = docs.length > pageSize;
+    const constraints =
+      opts.cursor?.kind === "time"
+        ? [
+            orderByChild("createdAt"),
+            endBefore(opts.cursor.createdAt, opts.cursor.id),
+            limitToLast(FEED_PAGE_SIZE + 1),
+          ]
+        : [orderByChild("createdAt"), limitToLast(FEED_PAGE_SIZE + 1)];
+    const snap = await get(query(confessionsRef(), ...constraints));
+    const sorted = snapToConfessions(snap).sort(byNewest);
+    const hasMore = sorted.length > FEED_PAGE_SIZE;
+    const items = sorted.slice(0, FEED_PAGE_SIZE);
+    const last = items[items.length - 1];
     return {
-      items: docs.slice(0, pageSize).map(toConfession),
-      cursor: hasMore ? (docs[pageSize - 1] ?? null) : null,
+      items,
+      cursor: hasMore && last ? { kind: "time", createdAt: last.createdAt, id: last.id } : null,
       hasMore,
     };
   } catch (err) {
-    // Missing index / offline / rules change — degrade to an empty page.
     // eslint-disable-next-line no-console
     console.warn("loadFeed failed:", err);
     return { items: [], cursor: null, hasMore: false };
   }
 }
 
-export async function loadTrending(days = 3, pageSize = 12): Promise<Confession[]> {
+/**
+ * Realtime: halaman pertama "terbaru". Confession yang baru disetujui admin
+ * muncul tanpa refresh. Mengembalikan fungsi unsubscribe.
+ */
+export function subscribeLatest(
+  onData: (items: Confession[]) => void,
+  onError?: (err: Error) => void,
+  size = FEED_PAGE_SIZE + 1
+): Unsubscribe {
+  const q = query(confessionsRef(), orderByChild("createdAt"), limitToLast(size));
+  return onValue(
+    q,
+    (snap) => onData(snapToConfessions(snap).sort(byNewest)),
+    (err) => onError?.(err)
+  );
+}
+
+/** Realtime: trending (likes terbanyak dalam periode). */
+export function subscribeTrending(
+  days: number,
+  pageSize: number,
+  onData: (items: Confession[]) => void,
+  onError?: (err: Error) => void
+): Unsubscribe {
   const since = Date.now() - days * 24 * 60 * 60 * 1000;
-  const q = query(
-    collection(getDb(), "confessions"),
-    where("status", "==", "PUBLISHED"),
-    fsOrderBy("likesCount", "desc"),
-    fsLimit(50)
+  const q = query(confessionsRef(), orderByChild("likesCount"), limitToLast(50));
+  return onValue(
+    q,
+    (snap) =>
+      onData(
+        snapToConfessions(snap)
+          .filter((c) => c.createdAt >= since)
+          .sort((a, b) => b.likesCount - a.likesCount || byNewest(a, b))
+          .slice(0, pageSize)
+      ),
+    (err) => onError?.(err)
   );
-  const snap = await getDocs(q);
-  return snap.docs
-    .map(toConfession)
-    .filter((c) => c.createdAt >= since)
-    .slice(0, pageSize);
 }
 
-export async function loadHomepageStats(): Promise<{
-  total: number;
-  today: number;
-  likes: number;
-}> {
-  const base = query(
-    collection(getDb(), "confessions"),
-    where("status", "==", "PUBLISHED")
+/** Realtime: satu confession (like/komentar count ikut berubah langsung). */
+export function subscribeConfession(
+  id: string,
+  onData: (c: Confession | null) => void,
+  onError?: (err: Error) => void
+): Unsubscribe {
+  return onValue(
+    ref(getRtdb(), `public/confessions/${id}`),
+    (snap) =>
+      onData(snap.exists() ? toConfession(id, snap.val() as Record<string, unknown>) : null),
+    (err) => onError?.(err)
   );
-  const totalSnap = await getCountFromServer(base);
-  const snap = await getDocs(base);
-  const startOfDay = new Date().setHours(0, 0, 0, 0);
-  let today = 0;
-  let likes = 0;
-  snap.docs.forEach((d) => {
-    const data = d.data() as Record<string, unknown>;
-    const created = data.createdAt as { toMillis?: () => number } | number;
-    const ms = typeof created === "number" ? created : created?.toMillis?.() ?? 0;
-    if (ms >= startOfDay) today++;
-    likes += Number(data.likesCount ?? 0);
-  });
-  return { total: totalSnap.data().count, today, likes };
 }
 
-export async function loadConfession(id: string): Promise<Confession | null> {
-  const { doc, getDoc } = await import("firebase/firestore");
-  const d = await getDoc(doc(getDb(), "confessions", id));
-  if (!d.exists()) return null;
-  const c = toConfession(d as QueryDocumentSnapshot<DocumentData>);
-  return c.status === "PUBLISHED" ? c : null;
-}
-
-export async function loadComments(
+/** Realtime: komentar tampil milik satu confession. */
+export function subscribeComments(
   confessionId: string,
+  onData: (items: ConfessionComment[]) => void,
+  onError?: (err: Error) => void,
   pageSize = 30
-): Promise<ConfessionComment[]> {
+): Unsubscribe {
   const q = query(
-    collection(getDb(), "comments"),
-    where("confessionId", "==", confessionId),
-    where("status", "==", "VISIBLE"),
-    fsOrderBy("createdAt", "desc"),
-    fsLimit(pageSize)
+    ref(getRtdb(), `public/comments/${confessionId}`),
+    orderByChild("createdAt"),
+    limitToLast(pageSize)
   );
-  try {
-    const snap = await getDocs(q);
-    return snap.docs.map(toComment);
-  } catch {
-    return [];
-  }
+  return onValue(
+    q,
+    (snap) => {
+      const out: ConfessionComment[] = [];
+      snap.forEach((c) => {
+        out.push(toComment(confessionId, String(c.key), c.val() as Record<string, unknown>));
+      });
+      onData(out.sort((a, b) => b.createdAt - a.createdAt));
+    },
+    (err) => onError?.(err)
+  );
+}
+
+/** Realtime: statistik beranda dihitung dari 200 confession terbaru yang tayang. */
+export function subscribeHomepageStats(
+  onData: (s: { total: number; today: number; likes: number }) => void,
+  onError?: (err: Error) => void
+): Unsubscribe {
+  const q = query(confessionsRef(), orderByChild("createdAt"), limitToLast(200));
+  return onValue(
+    q,
+    (snap) => {
+      const startOfDay = new Date().setHours(0, 0, 0, 0);
+      let today = 0;
+      let likes = 0;
+      const items = snapToConfessions(snap);
+      items.forEach((c) => {
+        if (c.createdAt >= startOfDay) today++;
+        likes += c.likesCount;
+      });
+      onData({ total: items.length, today, likes });
+    },
+    (err) => onError?.(err)
+  );
 }

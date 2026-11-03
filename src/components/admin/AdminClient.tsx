@@ -1,6 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { onValue, ref } from "firebase/database";
+import { getRtdb } from "@/lib/firebase/client";
+import { isAdminRole } from "@/lib/auth/roles";
+import type { UserRole } from "@/types";
 import Link from "next/link";
 import { api, ApiClientError } from "@/lib/api";
 import { useAuth } from "@/lib/auth/AuthProvider";
@@ -20,7 +24,8 @@ type Tab =
   | "users"
   | "categories"
   | "announcements"
-  | "settings";
+  | "settings"
+  | "audit";
 
 const TABS: readonly { id: Tab; label: string; icon: string }[] = [
   { id: "overview", label: "Overview", icon: "📊" },
@@ -32,6 +37,17 @@ const TABS: readonly { id: Tab; label: string; icon: string }[] = [
   { id: "categories", label: "Categories", icon: "🗂️" },
   { id: "announcements", label: "Announcements", icon: "📣" },
   { id: "settings", label: "Settings", icon: "⚙️" },
+  { id: "audit", label: "Audit Log", icon: "🧾" },
+];
+
+/** Tab yang boleh dilihat moderator; sisanya admin/owner. */
+const MODERATOR_TABS: readonly Tab[] = [
+  "overview",
+  "moderation",
+  "confessions",
+  "comments",
+  "reports",
+  "categories",
 ];
 
 interface StatsShape {
@@ -92,9 +108,33 @@ interface AdminStatsShape {
 }
 
 export function AdminClient() {
-  const { isAdmin, isOwner, loading, configured, uid } = useAuth();
+  const { isAdmin, role, loading, configured, uid, isAnonymous } = useAuth();
   const { toast } = useToast();
   const [tab, setTab] = useState<Tab>("overview");
+  const [tick, setTick] = useState(0);
+
+  // Realtime dashboard: server menaikkan meta/adminTick di setiap mutasi
+  // (confession baru, aksi moderasi, perubahan role, …) → tab aktif dimuat ulang.
+  useEffect(() => {
+    if (!isAdmin) return;
+    let first = true;
+    const unsub = onValue(
+      ref(getRtdb(), "meta/adminTick"),
+      () => {
+        if (first) {
+          first = false;
+          return;
+        }
+        setTick((t) => t + 1);
+      },
+      () => undefined
+    );
+    return unsub;
+  }, [isAdmin]);
+
+  const visibleTabs = TABS.filter(
+    (t) => isAdminRole(role) || MODERATOR_TABS.includes(t.id)
+  );
 
   if (loading) {
     return <div className="space-y-4">{StatSkeletonSkeletonList()}</div>;
@@ -115,10 +155,11 @@ export function AdminClient() {
         <EmptyState
           icon="🔐"
           title="Akses admin diperlukan"
-          description="Dashboard hanya untuk akun dengan role admin/owner yang diverifikasi server dari database. Pendaftaran baru selalu ber-role user biasa — role naik setelah di-acc lewat Realtime Database."
+          description="Dashboard hanya untuk akun dengan role moderator/admin/owner yang diverifikasi server (custom claim). Pendaftaran baru selalu ber-role user biasa — role naik hanya oleh owner."
         />
         {/* Daftar manual: selalu ber-role user biasa */}
         <AuthAccountPanel />
+        {!isAnonymous && <OwnerSetupPanel />}
         {uid && (
           <p className="rounded-xl bg-surface p-4 font-mono text-xs text-muted">
             UID sesimu: {uid}
@@ -135,12 +176,12 @@ export function AdminClient() {
         <h1 className="mt-2 text-xl font-bold text-ink">Admin Dashboard</h1>
         <p className="mt-1 text-sm text-muted">
           Sesi: <strong className="font-mono">{shortUid(uid)}</strong> · role:{" "}
-          <RoleBadge role={isOwner ? "owner" : "admin"} />
+          <RoleBadge role={role} />
         </p>
       </header>
 
       <div role="toolbar" aria-label="Menu admin" className="flex gap-2 overflow-x-auto pb-1">
-        {TABS.map((t) => (
+        {visibleTabs.map((t) => (
           <button
             key={t.id}
             type="button"
@@ -157,7 +198,7 @@ export function AdminClient() {
         ))}
       </div>
 
-      <AdminSection tab={tab} toast={toast} />
+      <AdminSection tab={tab} toast={toast} tick={tick} role={role} />
     </div>
   );
 }
@@ -175,9 +216,13 @@ function StatSkeletonSkeletonList(): React.ReactNode {
 function AdminSection({
   tab,
   toast,
+  tick,
+  role,
 }: {
   tab: Tab;
   toast: ReturnType<typeof useToast>["toast"];
+  tick: number;
+  role: UserRole;
 }) {
   const [stats, setStats] = useState<StatsShape | null>(null);
   const [loadingStats, setLoadingStats] = useState(true);
@@ -212,7 +257,10 @@ function AdminSection({
 
   useEffect(() => {
     if (tab === "overview") void refreshStats();
-  }, [tab, refreshStats]);
+  }, [tab, refreshStats, tick]);
+
+  // Moderator tidak boleh membuka tab admin walau state lama menunjuk ke sana.
+  if (!isAdminRole(role) && !MODERATOR_TABS.includes(tab)) return null;
 
   switch (tab) {
     case "overview":
@@ -226,7 +274,7 @@ function AdminSection({
           <StatCard label="Rejected" value={stats.rejectedConfessions} />
           <StatCard label="Total komentar" value={stats.totalComments} />
           <StatCard label="Laporan aktif" value={stats.openReports} accent />
-          <StatCard label="Pengguna anonim" value={stats.totalUsers} />
+          <StatCard label="Akun terdaftar" value={stats.totalUsers} />
           <StatCard label="Confession 7 hari" value={stats.last7DaysConfessions} />
         </div>
       ) : (
@@ -236,23 +284,26 @@ function AdminSection({
     case "confessions":
       return (
         <ConfessionRows
+          key={`${tab}-${tick}`}
           statusFilter={tab === "moderation" ? "PENDING" : "ALL"}
           title={tab === "moderation" ? "Menunggu moderasi" : "Semua confession"}
           onAction={onAction}
         />
       );
     case "comments":
-      return <CommentRows onAction={onAction} />;
+      return <CommentRows key={tick} onAction={onAction} />;
     case "reports":
-      return <ReportRows onAction={onAction} />;
+      return <ReportRows key={tick} onAction={onAction} />;
     case "users":
-      return <UserRows onAction={onAction} />;
+      return <UserRows key={tick} onAction={onAction} role={role} />;
     case "categories":
       return <CategoriesView />;
     case "announcements":
       return <AnnouncementPanel toast={toast} />;
     case "settings":
       return <SettingsPanel toast={toast} />;
+    case "audit":
+      return <AuditRows key={tick} />;
     default:
       return null;
   }
@@ -654,6 +705,7 @@ function RoleBadge({ role }: { role: string }) {
   const map: Record<string, string> = {
     owner: "bg-secondary/20 text-secondary",
     admin: "bg-primary/15 text-primary",
+    moderator: "bg-primary/10 text-primary",
     user: "bg-surface text-muted",
   };
   return (
@@ -665,9 +717,12 @@ function RoleBadge({ role }: { role: string }) {
 
 function UserRows({
   onAction,
+  role,
 }: {
   onAction: (type: string, id: string) => Promise<void>;
+  role: UserRole;
 }) {
+  const { toast } = useToast();
   const [rows, setRows] = useState<AdminUserRow[] | null>(null);
   const [blockedOnly, setBlockedOnly] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
@@ -687,6 +742,21 @@ function UserRows({
     void refresh();
   }
 
+  // Hanya OWNER: ubah role lewat server (custom claim + database + audit log).
+  async function changeRole(uid: string, next: string) {
+    if (!window.confirm(`Ubah role akun ini menjadi ${next.toUpperCase()}?`)) return;
+    setBusy(uid);
+    try {
+      await api("/api/admin/roles", { body: { uid, role: next } });
+      toast("success", "Role diperbarui.");
+    } catch (err) {
+      toast("error", err instanceof ApiClientError ? err.message : "Gagal mengubah role.");
+    } finally {
+      setBusy(null);
+      void refresh();
+    }
+  }
+
   const filtered = useMemo(() => {
     if (!rows) return null;
     const list = blockedOnly ? rows.filter((r) => r.isBlocked) : rows;
@@ -703,7 +773,7 @@ function UserRows({
     <section className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
         <h2 className="text-base font-bold text-ink">Pengguna</h2>
-        <span className="badge">role diubah di Realtime Database (users → uid → role)</span>
+        <span className="badge">role diubah owner lewat server</span>
         <label className="ml-auto flex items-center gap-2 text-xs text-muted">
           <input
             type="checkbox"
@@ -734,6 +804,20 @@ function UserRows({
               {u.email || <span className="font-mono">{shortUid(u.uid)}</span>}
             </span>
             <RoleBadge role={u.role} />
+            {role === "owner" && (
+              <select
+                aria-label={`Ubah role ${u.email || u.uid}`}
+                value={u.role}
+                disabled={busy === u.uid}
+                onChange={(e) => void changeRole(u.uid, e.target.value)}
+                className="input !w-auto !py-1 text-xs"
+              >
+                <option value="user">user</option>
+                <option value="moderator">moderator</option>
+                <option value="admin">admin</option>
+                <option value="owner">owner</option>
+              </select>
+            )}
             <span className={`badge ${u.isBlocked ? "text-danger" : "text-success"}`}>
               {u.isBlocked ? "DIBLOKIR" : "AKTIF"}
             </span>
@@ -813,6 +897,7 @@ function AnnouncementBase({
   const [announcement, setAnnouncement] = useState("");
   const [maintenance, setMaintenance] = useState(false);
   const [allowComments, setAllowComments] = useState(true);
+  const [allowConfessions, setAllowConfessions] = useState(true);
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
 
@@ -823,7 +908,9 @@ function AnnouncementBase({
           maintenanceMode?: boolean;
           announcement?: string;
           allowComments?: boolean;
+          allowConfessions?: boolean;
         };
+        setAllowConfessions(data.allowConfessions !== false);
         setAnnouncement(data.announcement ?? "");
         setMaintenance(data.maintenanceMode === true);
         setAllowComments(data.allowComments !== false);
@@ -839,6 +926,7 @@ function AnnouncementBase({
     announcement?: string;
     maintenanceMode?: boolean;
     allowComments?: boolean;
+    allowConfessions?: boolean;
   }) {
     setBusy(true);
     try {
@@ -917,6 +1005,24 @@ function AnnouncementBase({
             label="Komentar"
           />
         </div>
+        {withMaintenance && (
+          <div className="flex items-center justify-between gap-4 p-5">
+            <div>
+              <p className="font-semibold text-ink">Izinkan confession baru</p>
+              <p className="mt-0.5 text-xs text-muted">
+                Nonaktif bila pengiriman confession baru ditutup sementara.
+              </p>
+            </div>
+            <ToggleSwitch
+              checked={allowConfessions}
+              onChange={(v) => {
+                setAllowConfessions(v);
+                void save({ allowConfessions: v });
+              }}
+              label="Confession baru"
+            />
+          </div>
+        )}
       </div>
     </div>
   );
@@ -964,5 +1070,106 @@ function ToggleSwitch({
         }`}
       />
     </button>
+  );
+}
+
+
+/* ---------------- Audit log ---------------- */
+
+interface AuditRow {
+  id: string;
+  actorUid: string;
+  action: string;
+  target: string;
+  timestamp: number;
+}
+
+function AuditRows() {
+  const [rows, setRows] = useState<AuditRow[] | null>(null);
+  useEffect(() => {
+    let alive = true;
+    void (async () => {
+      try {
+        const data = (await api("/api/admin/listings?type=audit&pageSize=50")) as {
+          items: AuditRow[];
+        };
+        if (alive) setRows(data.items ?? []);
+      } catch {
+        if (alive) setRows([]);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  return (
+    <section className="space-y-4">
+      <h2 className="text-base font-bold text-ink">Audit log</h2>
+      {rows === null ? (
+        <StatSkeleton />
+      ) : rows.length === 0 ? (
+        <EmptyState icon="🧾" title="Belum ada catatan" />
+      ) : (
+        rows.map((r) => (
+          <div key={r.id} className="card flex flex-wrap items-center gap-3 p-4 text-xs">
+            <span className="badge font-mono">{r.action}</span>
+            <span className="text-muted">oleh {shortUid(r.actorUid)}</span>
+            <span className="font-mono text-muted">→ {shortUid(r.target)}</span>
+            <span className="ml-auto text-[11px] text-muted">{formatDateTime(r.timestamp)}</span>
+          </div>
+        ))
+      )}
+    </section>
+  );
+}
+
+/* ---------------- Bootstrap owner pertama ---------------- */
+
+function OwnerSetupPanel() {
+  const { refreshAuthToken } = useAuth();
+  const { toast } = useToast();
+  const [secret, setSecret] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function submit() {
+    setBusy(true);
+    try {
+      await api("/api/admin/setup", { body: { secret } });
+      await refreshAuthToken();
+      setSecret("");
+      toast("success", "Kamu sekarang OWNER. Memuat dashboard…");
+    } catch (err) {
+      toast("error", err instanceof ApiClientError ? err.message : "Setup gagal.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="card space-y-3 p-5">
+      <h2 className="text-base font-bold text-ink">🔑 Aktifkan owner pertama</h2>
+      <p className="text-xs text-muted">
+        Hanya bisa dipakai selama belum ada owner, dengan kunci setup dari
+        environment variable ADMIN_SETUP_SECRET.
+      </p>
+      <input
+        type="password"
+        value={secret}
+        onChange={(e) => setSecret(e.target.value)}
+        autoComplete="off"
+        placeholder="Kunci setup"
+        className="input"
+        aria-label="Kunci setup owner"
+      />
+      <button
+        type="button"
+        disabled={busy || secret.length < 8}
+        onClick={() => void submit()}
+        className="btn-primary"
+      >
+        {busy ? "Memproses…" : "Jadikan saya owner"}
+      </button>
+    </div>
   );
 }

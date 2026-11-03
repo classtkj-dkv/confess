@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { ConfessionCard } from "@/components/feed/ConfessionCard";
 import { EmptyState, ErrorState } from "@/components/ui/States";
@@ -8,7 +8,7 @@ import { CardSkeleton } from "@/components/ui/Skeletons";
 import { api, ApiClientError } from "@/lib/api";
 import { useAuth } from "@/lib/auth/AuthProvider";
 import { useToast } from "@/lib/auth/ToastProvider";
-import { loadComments, loadConfession } from "@/lib/firebase/feed";
+import { subscribeComments, subscribeConfession } from "@/lib/firebase/feed";
 import { isFirebaseConfigured } from "@/lib/firebase/client";
 import { MAX_COMMENT_LENGTH } from "@/lib/validations";
 import { formatRelativeTime } from "@/utils/format";
@@ -26,27 +26,27 @@ export function ConfessionDetailClient() {
   const [commentText, setCommentText] = useState("");
   const [commentBusy, setCommentBusy] = useState(false);
 
-  const loadAll = useCallback(async () => {
+  // Realtime: confession + komentar; dua listener, keduanya di-unsubscribe saat unmount.
+  useEffect(() => {
     if (!isFirebaseConfigured || !id || id.length > 64 || !/^[a-zA-Z0-9_-]+$/.test(id)) {
       setStatus("empty");
       return;
     }
-    try {
-      const [conf, cm] = await Promise.all([
-        loadConfession(id),
-        loadComments(id),
-      ]);
-      setConfession(conf);
-      setComments(cm);
-      setStatus(conf ? "ready" : "empty");
-    } catch {
-      setStatus("empty");
-    }
+    setStatus("loading");
+    const unsubConf = subscribeConfession(
+      id,
+      (conf) => {
+        setConfession(conf);
+        setStatus(conf ? "ready" : "empty");
+      },
+      () => setStatus("empty")
+    );
+    const unsubComments = subscribeComments(id, setComments, () => setComments([]));
+    return () => {
+      unsubConf();
+      unsubComments();
+    };
   }, [id]);
-
-  useEffect(() => {
-    void loadAll();
-  }, [loadAll]);
 
   async function submitComment() {
     if (!configured) {
@@ -62,7 +62,7 @@ export function ConfessionDetailClient() {
     try {
       await api("/api/comments", { body: { confessionId: id, message } });
       setCommentText("");
-      toast("info", "Komentar terkirim, menunggu moderasi.");
+      toast("info", "Komentar terkirim.");
     } catch (err) {
       toast(
         "error",

@@ -1,17 +1,25 @@
 import type { UserRole } from "@/types";
 
 /**
- * Role ladder — owner (paling tinggi) > admin > user.
- * Dipakai bersama oleh server (API routes) dan klien.
+ * Role ladder — owner > admin > moderator > user.
  *
- * SUMBER KEBENARAN: field `role` di Realtime Database `users/{uid}`.
- * Mengubah role = edit field itu langsung di Firebase Console
- * (Realtime Database → Data → users → pilih akun → role). Berlaku seketika.
+ * OTORISASI = Firebase Custom Claim `role` (diset server lewat Admin SDK),
+ * dan harus sama dengan profil `users/{uid}/role` di Realtime Database.
+ * Mengubah role hanya lewat endpoint owner (/api/admin/roles) — mengedit
+ * database manual TIDAK memberi akses, hanya bisa mencabutnya.
  */
 export const ROLE_RANK: Record<UserRole, number> = {
   user: 0,
-  admin: 1,
-  owner: 2,
+  moderator: 1,
+  admin: 2,
+  owner: 3,
+};
+
+export const ROLE_LABEL: Record<UserRole, string> = {
+  user: "User",
+  moderator: "Moderator",
+  admin: "Admin",
+  owner: "Owner",
 };
 
 export function rank(role: UserRole): number {
@@ -21,11 +29,17 @@ export function rank(role: UserRole): number {
 /** Nilai tidak dikenal / kosong selalu jatuh ke "user" (paling aman). */
 export function normalizeUserRole(value: unknown): UserRole {
   const v = typeof value === "string" ? value.trim().toLowerCase() : "";
-  if (v === "owner" || v === "admin" || v === "user") return v;
+  if (v === "owner" || v === "admin" || v === "moderator" || v === "user") return v;
   return "user";
 }
 
+/** moderator ke atas: boleh membuka dashboard & moderasi. */
 export function isStaff(role: UserRole): boolean {
+  return rank(role) >= ROLE_RANK.moderator;
+}
+
+/** admin ke atas: pengaturan situs, blokir akun, audit log. */
+export function isAdminRole(role: UserRole): boolean {
   return rank(role) >= ROLE_RANK.admin;
 }
 

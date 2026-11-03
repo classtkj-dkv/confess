@@ -1,7 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { onValue, ref } from "firebase/database";
+import { getRtdb } from "@/lib/firebase/client";
 import { ApiClientError, api } from "@/lib/api";
 import { useAuth } from "@/lib/auth/AuthProvider";
 import { useToast } from "@/lib/auth/ToastProvider";
@@ -28,11 +30,27 @@ function LikeButton({
   confession: Confession;
   onDone?: (liked: boolean) => void;
 }) {
-  const { configured } = useAuth();
+  const { configured, uid } = useAuth();
   const { toast } = useToast();
   const [liked, setLiked] = useState(false);
   const [count, setCount] = useState(confession.likesCount);
   const [busy, setBusy] = useState(false);
+
+  // Jumlah like mengikuti data realtime dari database.
+  useEffect(() => {
+    setCount(confession.likesCount);
+  }, [confession.likesCount]);
+
+  // Status "sudah like" milik user ini, realtime (reactions/{confessionId}/{uid}).
+  useEffect(() => {
+    if (!configured || !uid) return;
+    const unsub = onValue(
+      ref(getRtdb(), `reactions/${confession.id}/${uid}`),
+      (snap) => setLiked(snap.exists()),
+      () => undefined
+    );
+    return unsub;
+  }, [configured, uid, confession.id]);
 
   async function toggle() {
     if (!configured || busy) return;

@@ -1,9 +1,10 @@
-import { getAdminDb } from "@/lib/firebase/admin";
+import { getAdminRtdb } from "@/lib/firebase/admin";
 
 /**
- * Firestore-based fixed-window rate limiter (server side only).
- * Counter docs live in `rateLimits` and carry `expiresAt` so a Firestore
- * TTL policy can auto-delete stale windows.
+ * Fixed-window rate limiter berbasis Realtime Database (server only).
+ * Counter di `rateLimits/{scope}_{uid}_{windowStart}` memakai transaction,
+ * jadi aman terhadap request paralel. `expiresAt` bisa dipakai untuk
+ * pembersihan berkala (lihat scripts/cleanup-ratelimits.mjs bila dibuat).
  */
 export interface RateLimitResult {
   allowed: boolean;
@@ -18,51 +19,33 @@ export interface RateLimitConfig {
   windowMs: number;
 }
 
-function windowStartOf(cfg: RateLimitConfig): number {
-  return Math.floor(Date.now() / cfg.windowMs) * cfg.windowMs;
-}
-
 export async function checkRateLimit(
   cfg: RateLimitConfig
 ): Promise<RateLimitResult> {
-  const db = getAdminDb();
-  const windowStart = windowStartOf(cfg);
+  const windowStart = Math.floor(Date.now() / cfg.windowMs) * cfg.windowMs;
   const resetAt = windowStart + cfg.windowMs;
-  const ref = db.collection("rateLimits").doc(`${cfg.scope}:${cfg.uid}:${windowStart}`);
+  const ref = getAdminRtdb().ref(
+    `rateLimits/${cfg.scope}_${cfg.uid}_${windowStart}`
+  );
 
-  const result: RateLimitResult = {
-    allowed: false,
-    remaining: 0,
-    resetAt,
-  };
-
-  await db.runTransaction(async (tx) => {
-    const snap = await tx.get(ref);
-    const count: number =
-      typeof snap.data()?.count === "number"
-        ? (snap.data() as { count: number }).count
-        : 0;
-
-    result.remaining = Math.max(0, cfg.limit - count);
-    if (count >= cfg.limit) return;
-
-    tx.set(
-      ref,
-      {
-        scope: cfg.scope,
-        uid: cfg.uid,
-        count: count + 1,
-        resetAt,
-        // Firestore TTL candidate field — create a TTL policy on `expiresAt`.
-        expiresAt: resetAt,
-      },
-      { merge: true }
-    );
-    result.allowed = true;
-    result.remaining = Math.max(0, cfg.limit - (count + 1));
+  const res = await ref.transaction((cur: { count?: number } | null) => {
+    const count = typeof cur?.count === "number" ? cur.count : 0;
+    if (count >= cfg.limit) return; // abort → tidak diizinkan
+    return {
+      scope: cfg.scope,
+      uid: cfg.uid,
+      count: count + 1,
+      resetAt,
+      expiresAt: resetAt,
+    };
   });
 
-  return result;
+  const used = Number(res.snapshot.val()?.count ?? cfg.limit);
+  return {
+    allowed: res.committed,
+    remaining: Math.max(0, cfg.limit - used),
+    resetAt,
+  };
 }
 
 export const RATE_LIMITS = {

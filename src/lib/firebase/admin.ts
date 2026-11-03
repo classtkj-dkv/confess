@@ -1,12 +1,5 @@
 import { cert, getApps, initializeApp, type App } from "firebase-admin/app";
-import {
-  getFirestore,
-  type Firestore,
-} from "firebase-admin/firestore";
-import {
-  getAuth,
-  type Auth,
-} from "firebase-admin/auth";
+import { getAuth, type Auth } from "firebase-admin/auth";
 import { getDatabase, type Database } from "firebase-admin/database";
 
 let cachedApp: App | null = null;
@@ -50,32 +43,28 @@ export function getAdminApp(): App {
       "Firebase Admin SDK belum dikonfigurasi. Set FIREBASE_ADMIN_PROJECT_ID, FIREBASE_ADMIN_CLIENT_EMAIL, dan FIREBASE_ADMIN_PRIVATE_KEY di environment variables."
     );
   }
-
-  cachedApp = initializeApp({
-    credential: cert({
-      projectId:
-        serviceAccount.projectId,
-      clientEmail: serviceAccount.clientEmail,
-      privateKey: serviceAccount.privateKey.replace(/\\n/g, "\n"),
-    }),
-    projectId: serviceAccount.projectId,
-    databaseURL: process.env.NEXT_PUBLIC_FIREBASE_DATABASE_URL || undefined,
-  });
-
-  return cachedApp;
-}
-
-export function getAdminDb(): Firestore {
-  return getFirestore(getAdminApp());
-}
-
-/** Realtime Database — tempat data akun (users/{uid}) dan role disimpan. */
-export function getAdminRtdb(): Database {
   if (!process.env.NEXT_PUBLIC_FIREBASE_DATABASE_URL) {
     throw new Error(
       "NEXT_PUBLIC_FIREBASE_DATABASE_URL belum diisi (URL Realtime Database dari Firebase Console)."
     );
   }
+
+  cachedApp = initializeApp({
+    credential: cert({
+      projectId: serviceAccount.projectId,
+      clientEmail: serviceAccount.clientEmail,
+      privateKey: serviceAccount.privateKey.replace(/\\n/g, "\n"),
+    }),
+    projectId: serviceAccount.projectId,
+    // URL yang sama dengan Web SDK.
+    databaseURL: process.env.NEXT_PUBLIC_FIREBASE_DATABASE_URL,
+  });
+
+  return cachedApp;
+}
+
+/** Realtime Database — satu-satunya database aplikasi. */
+export function getAdminRtdb(): Database {
   return getDatabase(getAdminApp());
 }
 

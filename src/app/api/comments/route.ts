@@ -1,16 +1,17 @@
 import type { NextRequest } from "next/server";
-import { FieldValue } from "firebase-admin/firestore";
-import { getAdminDb } from "@/lib/firebase/admin";
+import { ServerValue } from "firebase-admin/database";
+import { getAdminRtdb } from "@/lib/firebase/admin";
 import {
   ApiError,
   assertNotBlocked,
-  ensureUserDoc,
   errorResponse,
   requireUid,
 } from "@/lib/security/apiHelpers";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/security/rateLimit";
 import { validateCommentInput } from "@/lib/validations";
 import { getAdminSettings } from "@/lib/firebase/settings";
+import { publicCommentOf } from "@/lib/firebase/publicData";
+import { touchAdmin } from "@/lib/security/audit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -19,7 +20,6 @@ export async function POST(req: NextRequest): Promise<Response> {
   try {
     const uid = await requireUid(req);
     await assertNotBlocked(uid);
-    await ensureUserDoc(uid);
 
     let raw: unknown;
     try {
@@ -29,12 +29,12 @@ export async function POST(req: NextRequest): Promise<Response> {
     }
 
     const confessionId = String((raw as Record<string, string> | null)?.confessionId ?? "");
-    if (!confessionId) {
+    if (!/^[a-zA-Z0-9_-]{5,64}$/.test(confessionId)) {
       throw new ApiError(400, "Confession tidak ditemukan.");
     }
     const clean = validateCommentInput(raw);
 
-    const db = getAdminDb();
+    const db = getAdminRtdb();
 
     const settings = await getAdminSettings();
     if (settings.maintenanceMode) {
@@ -54,29 +54,29 @@ export async function POST(req: NextRequest): Promise<Response> {
       throw new ApiError(429, "Batas 10 komentar per jam tercapai. Coba lagi nanti.");
     }
 
-    const confessionRef = db.collection("confessions").doc(confessionId);
-    let commentId = "";
+    const confStatus = await db.ref(`confessions/${confessionId}/status`).get();
+    if (confStatus.val() !== "PUBLISHED") {
+      throw new ApiError(404, "Confession tidak ditemukan atau tidak aktif.");
+    }
 
-    await db.runTransaction(async (tx) => {
-      const confSnap = await tx.get(confessionRef);
-      if (!confSnap.exists || confSnap.data()?.status !== "PUBLISHED") {
-        throw new ApiError(404, "Confession tidak ditemukan atau tidak aktif.");
-      }
-
-      const ref = db.collection("comments").doc();
-      tx.set(ref, {
-        id: ref.id,
-        confessionId,
-        authorUid: uid,
-        message: clean,
-        createdAt: Date.now(),
-        status: "VISIBLE",
-      });
-      tx.update(confessionRef, {
-        commentsCount: FieldValue.increment(1),
-      });
-      commentId = ref.id;
+    const ref = db.ref("comments").push();
+    const commentId = ref.key as string;
+    const record = {
+      id: commentId,
+      confessionId,
+      authorUid: uid,
+      message: clean,
+      createdAt: Date.now(),
+      status: "VISIBLE",
+    };
+    // Satu update multi-path: komentar privat + publik + counter (atomik).
+    await db.ref().update({
+      [`comments/${commentId}`]: record,
+      [`public/comments/${confessionId}/${commentId}`]: publicCommentOf(commentId, record),
+      [`confessions/${confessionId}/commentsCount`]: ServerValue.increment(1),
+      [`public/confessions/${confessionId}/commentsCount`]: ServerValue.increment(1),
     });
+    await touchAdmin();
 
     return Response.json(
       { ok: true, id: commentId, status: "VISIBLE" },

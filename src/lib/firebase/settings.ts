@@ -1,40 +1,24 @@
-import { getAdminDb } from "@/lib/firebase/admin";
+import { getAdminRtdb } from "@/lib/firebase/admin";
+import type { AppSettings } from "@/types";
+import { DEFAULT_SETTINGS, parseSettings } from "@/lib/settingsShared";
 
-export interface AdminSettings {
-  maintenanceMode: boolean;
-  announcement: string;
-  allowComments: boolean;
-}
+export type AdminSettings = AppSettings;
 
-export const DEFAULT_SETTINGS: AdminSettings = {
-  maintenanceMode: false,
-  announcement: "",
-  allowComments: true,
-};
+export { DEFAULT_SETTINGS, parseSettings };
 
-const SETTINGS_DOC_PATH = ["settings", "app"] as const;
+const SETTINGS_PATH = "settings/general";
 
 export async function getAdminSettings(): Promise<AdminSettings> {
-  const db = getAdminDb();
-  const snap = await db.collection(SETTINGS_DOC_PATH[0]).doc(SETTINGS_DOC_PATH[1]).get();
-  if (!snap.exists) return DEFAULT_SETTINGS;
-  const data = snap.data() as Partial<AdminSettings> | undefined;
-  return {
-    maintenanceMode: data?.maintenanceMode === true,
-    announcement: typeof data?.announcement === "string" ? data.announcement : "",
-    allowComments: data?.allowComments !== false,
-  };
+  const snap = await getAdminRtdb().ref(SETTINGS_PATH).get();
+  return parseSettings(snap.val());
 }
 
 export async function updateAdminSettings(
   patch: Partial<AdminSettings>
 ): Promise<AdminSettings> {
-  const db = getAdminDb();
   const current = await getAdminSettings();
   const next: AdminSettings = { ...current, ...patch };
   next.announcement = (next.announcement ?? "").slice(0, 280);
-  await db.collection(SETTINGS_DOC_PATH[0]).doc(SETTINGS_DOC_PATH[1]).set(next, {
-    merge: true,
-  });
+  await getAdminRtdb().ref(SETTINGS_PATH).set({ ...next, updatedAt: Date.now() });
   return next;
 }

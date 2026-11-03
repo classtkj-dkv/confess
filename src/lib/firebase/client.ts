@@ -2,7 +2,6 @@
 
 import { getApp, getApps, initializeApp, type FirebaseApp } from "firebase/app";
 import { getAuth, type Auth } from "firebase/auth";
-import { getFirestore, type Firestore } from "firebase/firestore";
 import { getDatabase, type Database } from "firebase/database";
 
 const firebaseConfig = {
@@ -16,8 +15,8 @@ const firebaseConfig = {
 };
 
 let app: FirebaseApp | null = null;
-let dbRef: Firestore | null = null;
 let authRef: Auth | null = null;
+let rtdbRef: Database | null = null;
 
 export function getFirebaseApp(): FirebaseApp {
   if (!app) {
@@ -26,13 +25,10 @@ export function getFirebaseApp(): FirebaseApp {
   return app;
 }
 
-export function getDb(): Firestore {
-  if (!dbRef) dbRef = getFirestore(getFirebaseApp());
-  return dbRef;
-}
-
+/** Realtime Database — satu-satunya database aplikasi. */
 export function getRtdb(): Database {
-  return getDatabase(getFirebaseApp());
+  if (!rtdbRef) rtdbRef = getDatabase(getFirebaseApp());
+  return rtdbRef;
 }
 
 export function getAuthClient(): Auth {
@@ -42,4 +38,5 @@ export function getAuthClient(): Auth {
 
 export const isFirebaseConfigured =
   Boolean(process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID) &&
-  Boolean(process.env.NEXT_PUBLIC_FIREBASE_API_KEY);
+  Boolean(process.env.NEXT_PUBLIC_FIREBASE_API_KEY) &&
+  Boolean(process.env.NEXT_PUBLIC_FIREBASE_DATABASE_URL);

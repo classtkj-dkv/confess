@@ -5,7 +5,7 @@ import Link from "next/link";
 import { ConfessionCard } from "./ConfessionCard";
 import { EmptyState } from "@/components/ui/States";
 import { CardSkeleton } from "@/components/ui/Skeletons";
-import { FEED_PAGE_SIZE, loadFeed } from "@/lib/firebase/feed";
+import { FEED_PAGE_SIZE, subscribeLatest } from "@/lib/firebase/feed";
 import { isFirebaseConfigured } from "@/lib/firebase/client";
 import type { Confession } from "@/types";
 
@@ -20,17 +20,16 @@ export function HomepageFeed() {
       setStatus("unconfigured");
       return;
     }
-    let alive = true;
-    loadFeed({ filter: "latest", search: null, category: null })
-      .then((page) => {
-        if (!alive) return;
-        setItems(page.items);
-        setStatus(page.items.length === 0 ? "empty" : "ready");
-      })
-      .catch(() => alive && setStatus("empty"));
-    return () => {
-      alive = false;
-    };
+    // Realtime: confession yang baru disetujui langsung muncul di beranda.
+    const unsub = subscribeLatest(
+      (list) => {
+        const page = list.slice(0, FEED_PAGE_SIZE);
+        setItems(page);
+        setStatus(page.length === 0 ? "empty" : "ready");
+      },
+      () => setStatus("empty")
+    );
+    return unsub;
   }, []);
 
   if (status === "loading") {

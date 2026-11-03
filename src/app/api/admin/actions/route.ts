@@ -1,6 +1,19 @@
 import type { NextRequest } from "next/server";
-import { errorResponse, requireStaff } from "@/lib/security/apiHelpers";
-import { getAdminDb, getAdminRtdb } from "@/lib/firebase/admin";
+import { ServerValue } from "firebase-admin/database";
+import {
+  ApiError,
+  errorResponse,
+  requireStaff,
+  type AuthContext,
+} from "@/lib/security/apiHelpers";
+import { getAdminRtdb } from "@/lib/firebase/admin";
+import { isAdminRole, normalizeUserRole, rank } from "@/lib/auth/roles";
+import {
+  deleteConfessionCascade,
+  publicCommentOf,
+  publicConfessionOf,
+} from "@/lib/firebase/publicData";
+import { touchAdmin, writeAudit } from "@/lib/security/audit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -37,10 +50,13 @@ const allowedActions: readonly AdminAction[] = [
   "dismissReport",
 ];
 
+/** Aksi yang hanya boleh admin/owner (bukan moderator). */
+const ADMIN_ONLY: readonly AdminAction[] = ["blockUser", "unblockUser", "deleteConfession"];
+
 export async function POST(req: NextRequest): Promise<Response> {
   try {
-    await requireStaff(req);
-    const db = getAdminDb();
+    const actor: AuthContext = await requireStaff(req);
+    const db = getAdminRtdb();
 
     let body: ActionBody;
     try {
@@ -57,120 +73,141 @@ export async function POST(req: NextRequest): Promise<Response> {
     if (!/^[a-zA-Z0-9_-]{5,64}$/.test(body.id)) {
       return Response.json({ error: "ID tidak valid." }, { status: 400 });
     }
+    if (ADMIN_ONLY.includes(body.type) && !isAdminRole(actor.role)) {
+      throw new ApiError(403, "Aksi ini hanya untuk admin/owner.", "not-admin");
+    }
 
+    const now = Date.now();
     let message = "Aksi berhasil.";
 
     switch (body.type) {
       case "approveConfession": {
-        await db.collection("confessions").doc(body.id).update({
-          status: "PUBLISHED",
+        const snap = await db.ref(`confessions/${body.id}`).get();
+        if (!snap.exists()) throw new ApiError(404, "Confession tidak ditemukan.");
+        const conf = snap.val() as Record<string, unknown>;
+        await db.ref().update({
+          [`confessions/${body.id}/status`]: "PUBLISHED",
+          [`confessions/${body.id}/updatedAt`]: now,
+          [`public/confessions/${body.id}`]: publicConfessionOf(body.id, conf),
         });
         message = "Confession disetujui.";
         break;
       }
       case "rejectConfession": {
-        await db.collection("confessions").doc(body.id).update({
-          status: "REJECTED",
+        const snap = await db.ref(`confessions/${body.id}`).get();
+        if (!snap.exists()) throw new ApiError(404, "Confession tidak ditemukan.");
+        await db.ref().update({
+          [`confessions/${body.id}/status`]: "REJECTED",
+          [`confessions/${body.id}/updatedAt`]: now,
+          [`public/confessions/${body.id}`]: null,
         });
         message = "Confession ditolak.";
         break;
       }
       case "deleteConfession": {
-        const ref = db.collection("confessions").doc(body.id);
-        // Cascade: remove related comments, reactions, reports.
-        const [comments, reactions, reports] = await Promise.all([
-          db.collection("comments").where("confessionId", "==", body.id).get(),
-          db.collection("reactions").where("confessionId", "==", body.id).get(),
-          db.collection("reports").where("confessionId", "==", body.id).get(),
-        ]);
-        await db.runTransaction(async (tx) => {
-          tx.delete(ref);
-          comments.forEach((c) => tx.delete(c.ref));
-          reactions.forEach((r) => tx.delete(r.ref));
-        });
-        await Promise.all(reports.docs.map((r) => r.ref.delete()));
+        await deleteConfessionCascade(body.id);
         message = "Confession dihapus beserta data terkait.";
         break;
       }
       case "hideComment": {
-        await db.collection("comments").doc(body.id).update({ status: "HIDDEN" });
-        const c = await db.collection("comments").doc(body.id).get();
-        const confessionId = String(c?.data()?.confessionId ?? "");
-        if (confessionId) {
-          await db.collection("confessions").doc(confessionId).update({
-            commentsCount: Math.max(0, Number((await db.collection("confessions").doc(confessionId).get()).data()?.commentsCount ?? 0) - 1),
+        const snap = await db.ref(`comments/${body.id}`).get();
+        if (!snap.exists()) throw new ApiError(404, "Komentar tidak ditemukan.");
+        const c = snap.val() as Record<string, unknown>;
+        const cid = String(c.confessionId ?? "");
+        if (c.status === "VISIBLE" && cid) {
+          await db.ref().update({
+            [`comments/${body.id}/status`]: "HIDDEN",
+            [`public/comments/${cid}/${body.id}`]: null,
+            [`confessions/${cid}/commentsCount`]: ServerValue.increment(-1),
+            [`public/confessions/${cid}/commentsCount`]: ServerValue.increment(-1),
           });
+        } else {
+          await db.ref(`comments/${body.id}/status`).set("HIDDEN");
         }
         message = "Komentar disembunyikan.";
         break;
       }
       case "publishComment": {
-        await db.collection("comments").doc(body.id).update({ status: "VISIBLE" });
-        const c = await db.collection("comments").doc(body.id).get();
-        const confessionId = String(c?.data()?.confessionId ?? "");
-        if (confessionId) {
-          await db.collection("confessions").doc(confessionId).update({
-            commentsCount: Number((await db.collection("confessions").doc(confessionId).get()).data()?.commentsCount ?? 0) + 1,
+        const snap = await db.ref(`comments/${body.id}`).get();
+        if (!snap.exists()) throw new ApiError(404, "Komentar tidak ditemukan.");
+        const c = snap.val() as Record<string, unknown>;
+        const cid = String(c.confessionId ?? "");
+        if (c.status !== "VISIBLE" && cid) {
+          await db.ref().update({
+            [`comments/${body.id}/status`]: "VISIBLE",
+            [`public/comments/${cid}/${body.id}`]: publicCommentOf(body.id, c),
+            [`confessions/${cid}/commentsCount`]: ServerValue.increment(1),
+            [`public/confessions/${cid}/commentsCount`]: ServerValue.increment(1),
           });
         }
         message = "Komentar ditayangkan.";
         break;
       }
       case "deleteComment": {
-        const c = await db.collection("comments").doc(body.id).get();
-        await db.collection("comments").doc(body.id).delete();
-        const confessionId = String(c?.data()?.confessionId ?? "");
-        if (confessionId && c.exists && c.data()?.status === "VISIBLE") {
-          await db.collection("confessions").doc(confessionId).update({
-            commentsCount: Math.max(0, Number(c.data()?.commentsCount ?? 0) - 1),
-          });
+        const snap = await db.ref(`comments/${body.id}`).get();
+        if (!snap.exists()) throw new ApiError(404, "Komentar tidak ditemukan.");
+        const c = snap.val() as Record<string, unknown>;
+        const cid = String(c.confessionId ?? "");
+        const updates: Record<string, unknown> = {
+          [`comments/${body.id}`]: null,
+          [`public/comments/${cid}/${body.id}`]: null,
+        };
+        if (c.status === "VISIBLE" && cid) {
+          updates[`confessions/${cid}/commentsCount`] = ServerValue.increment(-1);
+          updates[`public/confessions/${cid}/commentsCount`] = ServerValue.increment(-1);
         }
+        await db.ref().update(updates);
         message = "Komentar dihapus.";
         break;
       }
       case "deleteReport": {
-        await db.collection("reports").doc(body.id).delete();
+        await db.ref(`reports/${body.id}`).remove();
         message = "Laporan dihapus.";
         break;
       }
       case "resolveReport": {
-        await db.collection("reports").doc(body.id).update({ status: "RESOLVED" });
+        await db.ref(`reports/${body.id}/status`).set("RESOLVED");
         message = "Laporan ditandai selesai.";
         break;
       }
       case "dismissReport": {
-        await db.collection("reports").doc(body.id).update({ status: "DISMISSED" });
+        await db.ref(`reports/${body.id}/status`).set("DISMISSED");
         message = "Laporan diabaikan.";
         break;
       }
-      case "blockUser": {
-        if (!/^[a-zA-Z0-9_-]{17,28}$/.test(body.id)) {
-          return Response.json({ error: "UID tidak valid." }, { status: 400 });
-        }
-        const userRef = getAdminRtdb().ref(`users/${body.id}`);
-        const targetUser = await userRef.get();
-        if (String(targetUser.val()?.role ?? "").toLowerCase() === "owner") {
-          return Response.json(
-            { error: "Owner tidak bisa diblokir." },
-            { status: 403 }
-          );
-        }
-        await userRef.update({ uid: body.id, isBlocked: true });
-        message = "Akun diblokir.";
-        break;
-      }
+      case "blockUser":
       case "unblockUser": {
-        if (!/^[a-zA-Z0-9_-]{17,28}$/.test(body.id)) {
+        if (!/^[a-zA-Z0-9_-]{17,128}$/.test(body.id)) {
           return Response.json({ error: "UID tidak valid." }, { status: 400 });
         }
-        await getAdminRtdb()
-          .ref(`users/${body.id}`)
-          .update({ uid: body.id, isBlocked: false });
-        message = "Blokir dilepas.";
+        const userRef = db.ref(`users/${body.id}`);
+        const target = await userRef.get();
+        const targetRole = normalizeUserRole(target.val()?.role);
+        if (body.type === "blockUser") {
+          if (body.id === actor.uid) {
+            throw new ApiError(400, "Tidak bisa memblokir akun sendiri.");
+          }
+          if (rank(targetRole) >= rank(actor.role)) {
+            throw new ApiError(
+              403,
+              "Tidak bisa memblokir akun dengan role setara atau lebih tinggi."
+            );
+          }
+        }
+        const blocked = body.type === "blockUser";
+        await userRef.update({
+          uid: body.id,
+          isBlocked: blocked,
+          status: blocked ? "blocked" : "active",
+          updatedAt: now,
+        });
+        message = blocked ? "Akun diblokir." : "Blokir dilepas.";
         break;
       }
     }
 
+    await writeAudit(actor.uid, body.type, body.id);
+    await touchAdmin();
     return Response.json({ ok: true, message });
   } catch (err) {
     return errorResponse(err);

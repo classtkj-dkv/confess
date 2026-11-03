@@ -28,16 +28,29 @@ export function errorResponse(err: unknown): Response {
   );
 }
 
+interface VerifiedToken {
+  uid: string;
+  email: string | null;
+  claimRole: UserRole;
+  isAnonymous: boolean;
+}
+
 async function verifyRequestToken(
   req: NextRequest
-): Promise<{ uid: string; email: string | null } | null> {
+): Promise<VerifiedToken | null> {
   const authHeader = req.headers.get("authorization");
   if (!authHeader?.startsWith("Bearer ")) return null;
   const token = authHeader.slice("Bearer ".length).trim();
   if (!token || token.length > 4096) return null;
   try {
+    // checkRevoked = true → token yang dicabut (mis. role diturunkan) langsung ditolak.
     const decoded = await getAdminAuth().verifyIdToken(token, true);
-    return { uid: decoded.uid, email: decoded.email ?? null };
+    return {
+      uid: decoded.uid,
+      email: decoded.email ?? null,
+      claimRole: normalizeUserRole((decoded as Record<string, unknown>).role),
+      isAnonymous: decoded.firebase?.sign_in_provider === "anonymous",
+    };
   } catch {
     return null;
   }
@@ -50,10 +63,11 @@ export interface AuthContext {
 }
 
 /**
- * Signed-in + baca role dari Realtime Database (users/{uid}/role).
- * Akun email yang belum tercatat otomatis dibuat dengan role "user",
- * jadi akun yang mendaftar langsung muncul di database untuk di-acc.
- * Role dibaca ulang tiap request → perubahan di database langsung berlaku.
+ * Signed-in + role efektif.
+ * Role efektif = Custom Claim `role` (diset server) YANG JUGA cocok dengan
+ * profil users/{uid}/role di Realtime Database. Kalau berbeda (mis. role
+ * diturunkan/dicabut di database) → diperlakukan sebagai "user".
+ * Edit manual di database TIDAK PERNAH menaikkan hak akses.
  */
 async function getAuthContext(req: NextRequest): Promise<AuthContext> {
   const verified = await verifyRequestToken(req);
@@ -66,18 +80,22 @@ async function getAuthContext(req: NextRequest): Promise<AuthContext> {
   }
   const ref = getAdminRtdb().ref(`users/${verified.uid}`);
   const snap = await ref.get();
-  let role: UserRole = "user";
+  let dbRole: UserRole = "user";
   if (!snap.exists()) {
-    if (verified.email) {
+    if (verified.email && !verified.isAnonymous) {
       await ensureUserDoc(verified.uid, verified.email);
     }
   } else {
     const data = snap.val() as Record<string, unknown>;
-    role = normalizeUserRole(data?.role);
+    dbRole = normalizeUserRole(data?.role);
     if (verified.email && data?.email !== verified.email) {
-      await ref.update({ email: verified.email });
+      await ref.update({ email: verified.email, updatedAt: Date.now() });
     }
   }
+  const role =
+    verified.claimRole !== "user" && verified.claimRole === dbRole
+      ? verified.claimRole
+      : "user";
   return { uid: verified.uid, email: verified.email, role };
 }
 
@@ -91,11 +109,20 @@ export async function requireUid(req: NextRequest): Promise<string> {
   return (await getAuthContext(req)).uid;
 }
 
-/** Role admin atau owner di database (users/{uid}.role). */
+/** moderator / admin / owner. */
 export async function requireStaff(req: NextRequest): Promise<AuthContext> {
   const ctx = await getAuthContext(req);
-  if (rank(ctx.role) < 1) {
-    throw new ApiError(403, "Akses ditolak — butuh role admin/owner.", "not-staff");
+  if (rank(ctx.role) < rank("moderator")) {
+    throw new ApiError(403, "Akses ditolak — butuh role moderator ke atas.", "not-staff");
+  }
+  return ctx;
+}
+
+/** admin / owner. */
+export async function requireAdmin(req: NextRequest): Promise<AuthContext> {
+  const ctx = await getAuthContext(req);
+  if (rank(ctx.role) < rank("admin")) {
+    throw new ApiError(403, "Akses ditolak — butuh role admin ke atas.", "not-admin");
   }
   return ctx;
 }
@@ -121,29 +148,32 @@ export async function assertNotBlocked(uid: string): Promise<void> {
 }
 
 /**
- * Membuat data akun di Realtime Database (users/{uid}) dengan role default
- * "user" bila belum ada. Bila sudah ada, role TIDAK disentuh (hanya
- * melengkapi email kalau kosong).
+ * Membuat profil users/{uid} di Realtime Database dengan role default "user"
+ * bila belum ada. Bila sudah ada, role TIDAK disentuh.
  */
 export async function ensureUserDoc(
   uid: string,
   email?: string | null
-): Promise<string> {
+): Promise<UserRole> {
   const ref = getAdminRtdb().ref(`users/${uid}`);
   const snap = await ref.get();
   if (snap.exists()) {
     const data = snap.val() as Record<string, unknown>;
     if (email && !data?.email) {
-      await ref.update({ email });
+      await ref.update({ email, updatedAt: Date.now() });
     }
     return normalizeUserRole(data?.role);
   }
+  const now = Date.now();
   await ref.set({
     uid,
     email: email ?? "",
+    displayName: "",
     role: "user",
-    createdAt: Date.now(),
+    status: "active",
     isBlocked: false,
+    createdAt: now,
+    updatedAt: now,
   });
   return "user";
 }

@@ -1,22 +1,26 @@
-import { getAdminSettings } from "@/lib/firebase/settings";
+import { getAdminSettings, DEFAULT_SETTINGS } from "@/lib/firebase/settings";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/** Public banner info: maintenance mode + announcement. Read-only. */
+/** Info publik (fallback non-realtime): maintenance + pengumuman. Read-only. */
 export async function GET(): Promise<Response> {
   try {
-    const settings = await getAdminSettings();
+    const s = await getAdminSettings();
     return Response.json({
-      maintenanceMode: settings.maintenanceMode,
-      announcement: settings.announcement,
-      allowComments: settings.allowComments,
+      maintenanceMode: s.maintenanceMode,
+      announcement: s.announcement,
+      allowComments: s.allowComments,
+      allowConfessions: s.allowConfessions,
+      websiteName: s.websiteName,
     });
   } catch {
     return Response.json({
-      maintenanceMode: false,
+      maintenanceMode: DEFAULT_SETTINGS.maintenanceMode,
       announcement: "",
       allowComments: true,
+      allowConfessions: true,
+      websiteName: DEFAULT_SETTINGS.websiteName,
     });
   }
 }

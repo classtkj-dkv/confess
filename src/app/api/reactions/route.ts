@@ -1,5 +1,6 @@
 import type { NextRequest } from "next/server";
-import { getAdminDb } from "@/lib/firebase/admin";
+import { ServerValue } from "firebase-admin/database";
+import { getAdminRtdb } from "@/lib/firebase/admin";
 import {
   ApiError,
   assertNotBlocked,
@@ -13,9 +14,10 @@ export const dynamic = "force-dynamic";
 const VALID_TYPES = new Set(["like"]);
 
 /**
- * Toggle a reaction. One reaction per (uid, confession) — the doc id is
- * deterministic `${confessionId}__${userUid}`, so toggling is idempotent
- * even under races. Counter updates happen in the same transaction.
+ * Toggle reaksi. Satu reaksi per (confession, uid) di
+ * reactions/{confessionId}/{uid}. Toggle memakai transaction pada node
+ * reaksi itu sendiri sehingga aman dari klik ganda / race; counter diubah
+ * lewat ServerValue.increment pada data privat + publik.
  */
 export async function POST(req: NextRequest): Promise<Response> {
   try {
@@ -28,7 +30,7 @@ export async function POST(req: NextRequest): Promise<Response> {
     } catch {
       throw new ApiError(400, "Body JSON tidak valid.");
     }
-    const { confessionId, type } = raw as Record<string, string>;
+    const { confessionId, type } = (raw ?? {}) as Record<string, string>;
 
     if (
       typeof confessionId !== "string" ||
@@ -40,44 +42,35 @@ export async function POST(req: NextRequest): Promise<Response> {
       throw new ApiError(400, "Tipe reaksi tidak valid.");
     }
 
-    const db = getAdminDb();
-    const confessionRef = db.collection("confessions").doc(confessionId);
-    const reactionRef = db
-      .collection("reactions")
-      .doc(`${confessionId}_${uid}`);
+    const db = getAdminRtdb();
+    const status = await db.ref(`confessions/${confessionId}/status`).get();
+    if (status.val() !== "PUBLISHED") {
+      throw new ApiError(404, "Confession tidak ditemukan atau tidak aktif.");
+    }
 
-    let liked = false;
+    const reactionRef = db.ref(`reactions/${confessionId}/${uid}`);
+    const tx = await reactionRef.transaction((cur: unknown) =>
+      cur ? null : { type, createdAt: Date.now() }
+    );
+    if (!tx.committed) {
+      throw new ApiError(409, "Reaksi sedang diproses, coba lagi.");
+    }
+    const liked = tx.snapshot.exists();
 
-    await db.runTransaction(async (tx) => {
-      const [confSnap, reactionSnap] = await Promise.all([
-        tx.get(confessionRef),
-        tx.get(reactionRef),
-      ]);
-
-      if (!confSnap.exists || confSnap.data()?.status !== "PUBLISHED") {
-        throw new ApiError(404, "Confession tidak ditemukan atau tidak aktif.");
-      }
-
-      if (reactionSnap.exists) {
-        tx.delete(reactionRef);
-        tx.update(confessionRef, {
-          likesCount: Math.max(0, Number(confSnap.data()?.likesCount ?? 0) - 1),
-        });
-        liked = false;
-      } else {
-        tx.set(reactionRef, {
-          id: reactionRef.id,
-          confessionId,
-          userUid: uid,
-          type,
-          createdAt: Date.now(),
-        });
-        tx.update(confessionRef, {
-          likesCount: Number(confSnap.data()?.likesCount ?? 0) + 1,
-        });
-        liked = true;
-      }
+    const delta = ServerValue.increment(liked ? 1 : -1);
+    await db.ref().update({
+      [`confessions/${confessionId}/likesCount`]: delta,
+      [`public/confessions/${confessionId}/likesCount`]: delta,
     });
+
+    // Jaga agar counter tidak negatif bila data lama tidak konsisten.
+    const cur = await db.ref(`confessions/${confessionId}/likesCount`).get();
+    if (Number(cur.val() ?? 0) < 0) {
+      await db.ref().update({
+        [`confessions/${confessionId}/likesCount`]: 0,
+        [`public/confessions/${confessionId}/likesCount`]: 0,
+      });
+    }
 
     return Response.json({ ok: true, liked });
   } catch (err) {

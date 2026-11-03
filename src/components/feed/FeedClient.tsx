@@ -5,8 +5,12 @@ import { useSearchParams } from "next/navigation";
 import { ConfessionCard } from "./ConfessionCard";
 import { EmptyState, ErrorState } from "@/components/ui/States";
 import { CardSkeleton } from "@/components/ui/Skeletons";
-import { loadFeed } from "@/lib/firebase/feed";
-import type { DocumentData, QueryDocumentSnapshot } from "firebase/firestore";
+import {
+  FEED_PAGE_SIZE,
+  loadFeed,
+  subscribeLatest,
+  type FeedCursor,
+} from "@/lib/firebase/feed";
 import {
   CATEGORIES,
   getCategory,
@@ -36,7 +40,15 @@ export function FeedClient() {
   const [items, setItems] = useState<Confession[]>([]);
   const [hasMore, setHasMore] = useState(false);
   const [status, setStatus] = useState<Status>("loading");
-  const cursorRef = useRef<QueryDocumentSnapshot<DocumentData> | null>(null);
+  const cursorRef = useRef<FeedCursor | null>(null);
+
+  // Mode realtime: halaman pertama "terbaru" tanpa kategori/pencarian.
+  const realtime =
+    (filter === "latest" || filter === "all") && !category && !searchParam;
+  const [live, setLive] = useState<Confession[]>([]);
+  const [liveMore, setLiveMore] = useState(false);
+  const [extra, setExtra] = useState<Confession[]>([]);
+  const [extraMore, setExtraMore] = useState<boolean | null>(null);
 
   const fetchData = useCallback(
     async (mode: "initial" | "more") => {
@@ -71,11 +83,59 @@ export function FeedClient() {
     [filter, category, searchParam]
   );
 
+  // Mode non-realtime: baca sekali saat filter berubah.
   useEffect(() => {
+    if (realtime) return;
     cursorRef.current = null;
-    fetchData("initial");
+    void fetchData("initial");
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filter, category, searchParam]);
+  }, [filter, category, searchParam, realtime]);
+
+  // Mode realtime: satu listener, selalu di-unsubscribe saat berubah/unmount.
+  useEffect(() => {
+    if (!realtime) return;
+    if (!isFirebaseConfigured) {
+      setStatus("unconfigured");
+      return;
+    }
+    setStatus("loading");
+    setExtra([]);
+    setExtraMore(null);
+    const unsub = subscribeLatest(
+      (list) => {
+        setLive(list.slice(0, FEED_PAGE_SIZE));
+        setLiveMore(list.length > FEED_PAGE_SIZE);
+        setStatus("ready");
+      },
+      () => setStatus("ready")
+    );
+    return unsub;
+  }, [realtime]);
+
+  const shown = realtime
+    ? [...live, ...extra.filter((e) => !live.some((l) => l.id === e.id))]
+    : items;
+  const canLoadMore = realtime ? (extraMore ?? liveMore) : hasMore;
+
+  async function loadMore() {
+    if (!realtime) {
+      await fetchData("more");
+      return;
+    }
+    const last = shown[shown.length - 1];
+    if (!last) return;
+    const page = await loadFeed({
+      filter,
+      category: null,
+      search: null,
+      cursor: { kind: "time", createdAt: last.createdAt, id: last.id },
+    });
+    setExtra((prev) => {
+      const seen = new Set(prev.map((p) => p.id));
+      return [...prev, ...page.items.filter((p) => !seen.has(p.id))];
+    });
+    setExtraMore(page.hasMore);
+  }
 
   return (
     <div className="space-y-5">
@@ -163,7 +223,7 @@ export function FeedClient() {
           title="Feed belum tersedia"
           description="Konfigurasi Firebase environment variables terlebih dahulu."
         />
-      ) : items.length === 0 ? (
+      ) : shown.length === 0 ? (
         <EmptyState
           icon="🍃"
           title="Tidak ada confession di sini"
@@ -171,13 +231,13 @@ export function FeedClient() {
         />
       ) : (
         <div className="space-y-4">
-          {items.map((c) => (
+          {shown.map((c) => (
             <ConfessionCard key={c.id} confession={c} />
           ))}
-          {hasMore ? (
+          {canLoadMore ? (
             <button
               type="button"
-              onClick={() => fetchData("more")}
+              onClick={() => void loadMore()}
               className="btn-ghost w-full"
               aria-label="Muat confession berikutnya"
             >
