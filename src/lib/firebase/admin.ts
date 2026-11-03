@@ -15,14 +15,16 @@ function getServiceAccount(): {
 
   if (!projectId || !clientEmail || !rawKey) return null;
 
-  // Support both raw multiline keys and Vercel-style \n escaped keys.
-  const privateKey = rawKey.startsWith("-----BEGIN")
-    ? rawKey
-    : rawKey.replace(/\\n/g, "\n");
+  // Dukung key multiline asli, key dengan escape \n literal (gaya Vercel),
+  // dan key yang terbungkus tanda kutip.
+  const privateKey = rawKey
+    .trim()
+    .replace(/^["']|["']$/g, "")
+    .replace(/\\n/g, "\n");
 
-  if (privateKey.includes("\\n")) {
+  if (!privateKey.includes("BEGIN") || !privateKey.includes("PRIVATE KEY")) {
     throw new Error(
-      "FIREBASE_ADMIN_PRIVATE_KEY tidak valid. Gunakan literal newline atau escape \\n."
+      "FIREBASE_ADMIN_PRIVATE_KEY tidak valid. Salin seluruh nilai private_key dari file JSON service account."
     );
   }
 
@@ -53,7 +55,7 @@ export function getAdminApp(): App {
     credential: cert({
       projectId: serviceAccount.projectId,
       clientEmail: serviceAccount.clientEmail,
-      privateKey: serviceAccount.privateKey.replace(/\\n/g, "\n"),
+      privateKey: serviceAccount.privateKey,
     }),
     projectId: serviceAccount.projectId,
     // URL yang sama dengan Web SDK.

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { ConfessionCard } from "./ConfessionCard";
 import { EmptyState, ErrorState } from "@/components/ui/States";
 import { CardSkeleton } from "@/components/ui/Skeletons";
@@ -29,6 +29,7 @@ const FILTERS: readonly { id: FeedFilter; label: string }[] = [
 type Status = "loading" | "ready" | "empty" | "unconfigured";
 
 export function FeedClient() {
+  const router = useRouter();
   const params = useSearchParams();
   const searchParam = params.get("search");
   const rawCategory = params.get("category");
@@ -37,6 +38,11 @@ export function FeedClient() {
   const [category, setCategory] = useState<CategoryId | null>(
     isCategoryId(rawCategory) ? rawCategory : null
   );
+  // Sinkronkan kategori bila URL berubah (mis. dari halaman Kategori).
+  useEffect(() => {
+    setCategory(isCategoryId(rawCategory) ? rawCategory : null);
+  }, [rawCategory]);
+
   const [items, setItems] = useState<Confession[]>([]);
   const [hasMore, setHasMore] = useState(false);
   const [status, setStatus] = useState<Status>("loading");
@@ -173,7 +179,10 @@ export function FeedClient() {
           {searchParam && (
             <button
               type="button"
-              onClick={() => setFilter("latest")}
+              onClick={() => {
+                setFilter("latest");
+                router.push(category ? `/feed?category=${category}` : "/feed");
+              }}
               className="focus-ring shrink-0 rounded-full border border-hairline bg-surface px-4 py-1.5 text-xs text-muted"
             >
               Hapus filter pencarian

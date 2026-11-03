@@ -345,13 +345,23 @@ function ConfessionRows({
   const [status, setStatus] = useState(statusFilter);
   const [busy, setBusy] = useState<string | null>(null);
 
+  const [loadError, setLoadError] = useState<string | null>(null);
+
   const refresh = useCallback(async () => {
     setRows(null);
-    const data = (await api(
-      `/api/admin/confessions?status=${status}&pageSize=20`,
-      { method: "GET" }
-    )) as { items: AdminConfessionRow[] };
-    setRows(data.items ?? []);
+    setLoadError(null);
+    try {
+      const data = (await api(
+        `/api/admin/confessions?status=${status}&pageSize=20`,
+        { method: "GET" }
+      )) as { items: AdminConfessionRow[] };
+      setRows(data.items ?? []);
+    } catch (err) {
+      setRows([]);
+      setLoadError(
+        err instanceof ApiClientError ? err.message : "Gagal memuat confession."
+      );
+    }
   }, [status]);
 
   useEffect(() => {
@@ -392,6 +402,8 @@ function ConfessionRows({
 
       {rows === null ? (
         <div className="space-y-3">{Array.from({ length: 3 }).map((_, i) => <StatSkeleton key={i} />)}</div>
+      ) : loadError ? (
+        <ErrorState description={loadError} />
       ) : rows.length === 0 ? (
         <EmptyState icon="✅" title="Tidak ada confession" />
       ) : (

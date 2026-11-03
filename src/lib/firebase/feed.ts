@@ -10,7 +10,6 @@ import {
   ref,
   equalTo,
   startAt,
-  endAt,
   type DataSnapshot,
 } from "firebase/database";
 import { getRtdb } from "@/lib/firebase/client";
@@ -29,6 +28,7 @@ import type {
 export const FEED_PAGE_SIZE = 8;
 const POPULAR_POOL = 100;
 const CATEGORY_POOL = 100;
+const SEARCH_POOL = 500;
 
 export type Unsubscribe = () => void;
 
@@ -107,15 +107,14 @@ export async function loadFeed(opts: LoadFeedOptions): Promise<FeedPage> {
 
   try {
     if (search.length >= 2) {
+      // RTDB tidak punya "contains": ambil SEARCH_POOL confession terbaru lalu
+      // cocokkan di memori (mencakup kata di tengah kalimat, bukan hanya awalan).
       const snap = await get(
-        query(
-          confessionsRef(),
-          orderByChild("messageLower"),
-          startAt(search),
-          endAt(`${search}\uf8ff`)
-        )
+        query(confessionsRef(), orderByChild("createdAt"), limitToLast(SEARCH_POOL))
       );
-      let items = snapToConfessions(snap);
+      let items = snapToConfessions(snap).filter((c) =>
+        c.message.toLowerCase().includes(search)
+      );
       if (opts.category) items = items.filter((c) => c.category === opts.category);
       return {
         items: items.sort(byNewest).slice(0, 20),
@@ -212,7 +211,13 @@ export function subscribeTrending(
   onError?: (err: Error) => void
 ): Unsubscribe {
   const since = Date.now() - days * 24 * 60 * 60 * 1000;
-  const q = query(confessionsRef(), orderByChild("likesCount"), limitToLast(50));
+  // Ambil confession dalam periode (index createdAt), lalu urutkan per like di memori.
+  const q = query(
+    confessionsRef(),
+    orderByChild("createdAt"),
+    startAt(since),
+    limitToLast(200)
+  );
   return onValue(
     q,
     (snap) =>

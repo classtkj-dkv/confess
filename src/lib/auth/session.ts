@@ -22,7 +22,7 @@ export async function getAuthSession(): Promise<AuthSession | null> {
     }
   }
   try {
-    const token = await user.getIdToken(true);
+    const token = await user.getIdToken(false);
     return { uid: user.uid, token };
   } catch {
     return null;

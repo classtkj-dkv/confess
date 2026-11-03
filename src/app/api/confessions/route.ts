@@ -91,12 +91,13 @@ export async function POST(req: NextRequest): Promise<Response> {
       .limitToLast(20)
       .get();
     if (dup.exists()) {
-      const lower = message.toLowerCase().replace(/\s+/g, " ");
+      const norm = (s: string) => s.toLowerCase().replace(/\s+/g, " ").trim();
+      const lower = norm(message);
       const since = Date.now() - RECENT_WINDOW_MS;
       let dupFound = false;
       dup.forEach((d) => {
         const v = d.val() as Record<string, unknown>;
-        if (Number(v.createdAt ?? 0) > since && String(v.messageLower ?? "") === lower) {
+        if (Number(v.createdAt ?? 0) > since && norm(String(v.message ?? v.messageLower ?? "")) === lower) {
           dupFound = true;
         }
       });
