@@ -7,7 +7,6 @@ import { CATEGORIES } from "@/lib/categories";
 import { useToast } from "@/lib/auth/ToastProvider";
 import { MAX_CONFESSION_LENGTH } from "@/lib/validations";
 import { getCategory } from "@/lib/categories";
-import { charCount } from "@/utils/format";
 import { Icon } from "@/components/ui/Icon";
 
 type Step = "compose" | "preview" | "sent";
@@ -21,9 +20,8 @@ export function ConfessionForm({ defaultCategory }: { defaultCategory?: string }
   const [busy, setBusy] = useState(false);
   const [agree, setAgree] = useState(false);
 
-  const remaining = MAX_CONFESSION_LENGTH - charCount(message);
   const invalid = useMemo(
-    () => message.trim().length < 10,
+    () => !/[\p{L}\p{N}]/u.test(message),
     [message]
   );
   const categoryMeta = category ? getCategory(category) : null;
@@ -66,11 +64,10 @@ export function ConfessionForm({ defaultCategory }: { defaultCategory?: string }
           <Icon name="clock" className="h-7 w-7" />
         </div>
         <h2 className="mt-4 text-lg font-bold text-ink">
-          Confession terkirim, sedang menunggu moderasi
+          Terkirim, menunggu moderasi
         </h2>
         <p className="mx-auto mt-2 max-w-md text-sm text-muted">
-          Confessionmu akan tampil di feed setelah disetujui tim moderasi.
-          Biasanya kurang dari 24 jam. Terima kasih sudah berbagi!
+          Akan tampil di feed setelah disetujui moderator.
         </p>
         <div className="mt-6 flex flex-wrap justify-center gap-2">
           <button
@@ -149,22 +146,9 @@ export function ConfessionForm({ defaultCategory }: { defaultCategory?: string }
           onChange={(e) => setMessage(e.target.value)}
           rows={8}
           maxLength={MAX_CONFESSION_LENGTH}
-          placeholder="Ceritakan apa yang ada di pikiranmu…"
+          placeholder="Tulis confessionmu di sini…"
           className="input resize-y min-h-40"
-          aria-describedby="char-counter"
         />
-        <p
-          id="char-counter"
-          aria-live="polite"
-          className={`mt-1.5 text-right text-xs ${remaining < 50 ? "text-warning" : "text-muted"}`}
-        >
-          {remaining} karakter tersisa
-        </p>
-        {message.trim().length < 10 && (
-          <p className={"mt-1 text-xs text-muted"}>
-            Minimal 10 karakter supaya ceritamu cukup jelas.
-          </p>
-        )}
       </div>
 
       <div>
@@ -202,10 +186,7 @@ export function ConfessionForm({ defaultCategory }: { defaultCategory?: string }
           onChange={(e) => setAgree(e.target.checked)}
           className="mt-0.5 h-4 w-4 rounded border-hairline bg-background accent-primary"
         />
-        <span>
-          Confession ini jujur, bukan fitnah, tidak menyebarkan informasi pribadi
-          orang lain, dan tidak memuat konten tidak pantas.
-        </span>
+        <span>Saya menulis dengan jujur dan tanpa menyebar data pribadi orang lain.</span>
       </label>
 
       <div className="flex items-center gap-2">

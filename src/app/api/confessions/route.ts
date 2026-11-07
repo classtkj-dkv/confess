@@ -57,9 +57,8 @@ export async function POST(req: NextRequest): Promise<Response> {
     if (urlMatches && urlMatches.length >= 3) {
       throw new ApiError(400, "Terlalu banyak tautan; tulis tanpa tautan ya.");
     }
-    const letters = message.replace(/[^a-zA-Z\u00C0-\u024F]/g, "");
-    if (letters.length < 8) {
-      throw new ApiError(400, "Confession harus memuat kesan bermakna, bukan simbol saja.");
+    if (!/[\p{L}\p{N}]/u.test(message)) {
+      throw new ApiError(400, "Isi confession dengan huruf atau angka.");
     }
 
     const db = getAdminRtdb();
@@ -108,8 +107,8 @@ export async function POST(req: NextRequest): Promise<Response> {
 
     // Re-check: FINAL sanity trim + length enforcement
     const finalMessage = sanitizeText(message, maxLen);
-    if (Array.from(finalMessage).length < 10) {
-      throw new ApiError(400, "Confession minimal 10 karakter.");
+    if (!/[\p{L}\p{N}]/u.test(finalMessage)) {
+      throw new ApiError(400, "Confession tidak boleh kosong.");
     }
 
     const ref = db.ref("confessions").push();

@@ -54,8 +54,8 @@ export function ConfessionDetailClient() {
       return;
     }
     const message = commentText.trim();
-    if (message.length < 3) {
-      toast("warning", "Komentar minimal 3 karakter.");
+    if (!/[\p{L}\p{N}]/u.test(message)) {
+      toast("warning", "Tulis komentar dulu ya.");
       return;
     }
     setCommentBusy(true);
@@ -117,24 +117,19 @@ export function ConfessionDetailClient() {
             onChange={(e) => setCommentText(e.target.value)}
             rows={3}
             maxLength={MAX_COMMENT_LENGTH}
-            placeholder="Tulis komentar yang sopan dan membangun…"
+            placeholder="Tulis komentar…"
             className="input resize-y"
           />
           <div className="mt-2 flex items-center justify-between gap-3">
-            <span className="text-[11px] text-muted">
-              {MAX_COMMENT_LENGTH - Array.from(commentText).length} karakter • maks 10 komentar/jam
-            </span>
+            <span />
             <button
               type="submit"
-              disabled={commentBusy || commentText.trim().length < 3}
+              disabled={commentBusy || !/[\p{L}\p{N}]/u.test(commentText)}
               className="btn-primary"
             >
               {commentBusy ? "Mengirim…" : "Kirim komentar"}
             </button>
           </div>
-          <p className="mt-2 text-[11px] text-muted">
-            Komentar tayang langsung; admin dapat menyembunyikan komentar yang melanggar aturan.
-          </p>
         </form>
 
         {comments.length > 0 && (

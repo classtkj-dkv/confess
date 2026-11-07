@@ -17,8 +17,8 @@ export function validateConfessionInput(
   }
   const { message, category } = body as Record<string, unknown>;
 
-  if (typeof message !== "string" || message.trim().length < 10) {
-    throw new Error("Confession minimal 10 karakter.");
+  if (typeof message !== "string" || !/[\p{L}\p{N}]/u.test(message)) {
+    throw new Error("Confession tidak boleh kosong.");
   }
   if (Array.from(message).length > MAX_CONFESSION_LENGTH) {
     throw new Error("Confession maksimal 1.000 karakter.");
@@ -42,8 +42,8 @@ export function validateCommentInput(body: unknown): string {
   if (typeof confessionId !== "string" || !/^[a-zA-Z0-9_-]{5,64}$/.test(confessionId)) {
     throw new Error("Confession tidak ditemukan.");
   }
-  if (typeof message !== "string" || message.trim().length < 3) {
-    throw new Error("Komentar minimal 3 karakter.");
+  if (typeof message !== "string" || !/[\p{L}\p{N}]/u.test(message)) {
+    throw new Error("Komentar tidak boleh kosong.");
   }
   if (Array.from(message).length > MAX_COMMENT_LENGTH) {
     throw new Error("Komentar maksimal 500 karakter.");

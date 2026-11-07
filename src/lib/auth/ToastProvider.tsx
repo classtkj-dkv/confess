@@ -37,9 +37,11 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const toast = useCallback(
     (kind: ToastKind, message: string) => {
       const id = nextId++;
+      const text = message.slice(0, 240);
       setToasts((prev) => [
-        ...prev.slice(-3),
-        { id, kind, message: message.slice(0, 240) },
+        // Pesan identik tidak ditumpuk (mis. klik berulang saat error yang sama).
+        ...prev.filter((t) => !(t.kind === kind && t.message === text)).slice(-3),
+        { id, kind, message: text },
       ]);
       window.setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 4200);
     },

@@ -1,6 +1,10 @@
 "use client";
 
-import { getAuthSession } from "@/lib/auth/session";
+import {
+  describeAuthError,
+  getAuthSession,
+  getLastAuthErrorCode,
+} from "@/lib/auth/session";
 import { isFirebaseConfigured } from "@/lib/firebase/client";
 
 export class ApiClientError extends Error {
@@ -30,7 +34,7 @@ export async function api(
     }
     const session = await getAuthSession();
     if (!session) {
-      throw new ApiClientError(503, "Gagal memvalidasi sesi anonim. Periksa koneksi lalu coba lagi.");
+      throw new ApiClientError(503, describeAuthError(getLastAuthErrorCode()));
     }
     headers.Authorization = `Bearer ${session.token}`;
   }
