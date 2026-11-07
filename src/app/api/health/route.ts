@@ -26,6 +26,7 @@ export async function GET(): Promise<Response> {
 
   const result: Record<string, unknown> = {
     version: "rtdb",
+    nodeVersion: process.version,
     env,
     databaseUrlLooksValid: /^https:\/\/.+\.(firebaseio\.com|firebasedatabase\.app)\/?$/.test(dbUrl),
     privateKeyLooksValid:
