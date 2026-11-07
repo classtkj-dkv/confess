@@ -5,7 +5,7 @@ import {
   errorResponse,
   requireAuth,
 } from "@/lib/security/apiHelpers";
-import { getAdminAuth, getAdminRtdb } from "@/lib/firebase/admin";
+import { getAdminRtdb } from "@/lib/firebase/admin";
 import { writeAudit, touchAdmin } from "@/lib/security/audit";
 
 export const runtime = "nodejs";
@@ -54,7 +54,6 @@ export async function POST(req: NextRequest): Promise<Response> {
       throw new ApiError(409, "Owner sudah ada. Setup ditutup.", "owner-exists");
     }
 
-    await getAdminAuth().setCustomUserClaims(ctx.uid, { role: "owner" });
     await db.ref(`users/${ctx.uid}`).update({
       uid: ctx.uid,
       email: ctx.email,

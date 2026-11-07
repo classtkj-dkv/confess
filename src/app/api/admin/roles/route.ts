@@ -5,7 +5,7 @@ import {
   requireOwner,
 } from "@/lib/security/apiHelpers";
 import { getAdminAuth, getAdminRtdb } from "@/lib/firebase/admin";
-import { normalizeUserRole, rank } from "@/lib/auth/roles";
+import { normalizeUserRole } from "@/lib/auth/roles";
 import { touchAdmin, writeAudit } from "@/lib/security/audit";
 
 export const runtime = "nodejs";
@@ -14,12 +14,13 @@ export const dynamic = "force-dynamic";
 const VALID = new Set(["user", "moderator", "admin", "owner"]);
 
 /**
- * Ubah role akun — HANYA owner (diverifikasi server dari claim + database).
+ * Ubah role akun — HANYA owner (diverifikasi server dari database).
  *  1. Verifikasi identitas OWNER.
- *  2. Set Custom Claim `role` lewat Admin SDK.
- *  3. Turun role / dicabut → revokeRefreshTokens (token lama langsung ditolak).
- *  4. Perbarui profil users/{uid}/role di Realtime Database.
- *  5. Catat ke audit_logs.
+ *  2. Pastikan target akun email (bukan anonim).
+ *  3. Tulis users/{uid}/role di Realtime Database (server membaca role dari
+ *     sini di setiap request, jadi berlaku seketika).
+ *  4. Catat ke audit_logs.
+ * (Role juga bisa diubah manual di Firebase Console → Realtime Database.)
  * Dashboard & klien target ikut berubah realtime lewat listener RTDB.
  */
 export async function POST(req: NextRequest): Promise<Response> {
@@ -60,25 +61,12 @@ export async function POST(req: NextRequest): Promise<Response> {
     const snap = await userRef.get();
     const oldRole = normalizeUserRole(snap.val()?.role);
 
-    // Turun role: cabut akses database dulu (rules mensyaratkan role DB = claim).
-    const demoting = rank(newRole) < rank(oldRole);
-    if (demoting) {
-      await userRef.update({ role: newRole, updatedAt: Date.now() });
-    }
-    await auth.setCustomUserClaims(uid, {
-      ...(targetUser.customClaims ?? {}),
+    await userRef.update({
+      uid,
+      email: targetUser.email ?? snap.val()?.email ?? "",
       role: newRole,
+      updatedAt: Date.now(),
     });
-    if (demoting) {
-      await auth.revokeRefreshTokens(uid);
-    } else {
-      await userRef.update({
-        uid,
-        email: targetUser.email ?? snap.val()?.email ?? "",
-        role: newRole,
-        updatedAt: Date.now(),
-      });
-    }
 
     await writeAudit(actor.uid, "setRole", uid, { from: oldRole, to: newRole });
     await touchAdmin();

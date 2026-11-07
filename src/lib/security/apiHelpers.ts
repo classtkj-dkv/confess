@@ -31,7 +31,6 @@ export function errorResponse(err: unknown): Response {
 interface VerifiedToken {
   uid: string;
   email: string | null;
-  claimRole: UserRole;
   isAnonymous: boolean;
 }
 
@@ -48,7 +47,6 @@ async function verifyRequestToken(
     return {
       uid: decoded.uid,
       email: decoded.email ?? null,
-      claimRole: normalizeUserRole((decoded as Record<string, unknown>).role),
       isAnonymous: decoded.firebase?.sign_in_provider === "anonymous",
     };
   } catch {
@@ -64,10 +62,11 @@ export interface AuthContext {
 
 /**
  * Signed-in + role efektif.
- * Role efektif = Custom Claim `role` (diset server) YANG JUGA cocok dengan
- * profil users/{uid}/role di Realtime Database. Kalau berbeda (mis. role
- * diturunkan/dicabut di database) → diperlakukan sebagai "user".
- * Edit manual di database TIDAK PERNAH menaikkan hak akses.
+ * Role = field `users/{uid}/role` di Realtime Database (sumber kebenaran
+ * tunggal). Akun baru selalu "user"; naik ke moderator/admin/owner dilakukan
+ * dengan mengedit field itu di Firebase Console (atau lewat panel owner).
+ * Klien tidak punya hak tulis ke `users/*` (Security Rules), jadi tidak ada
+ * yang bisa menaikkan role-nya sendiri dari browser.
  */
 async function getAuthContext(req: NextRequest): Promise<AuthContext> {
   const verified = await verifyRequestToken(req);
@@ -92,11 +91,7 @@ async function getAuthContext(req: NextRequest): Promise<AuthContext> {
       await ref.update({ email: verified.email, updatedAt: Date.now() });
     }
   }
-  const role =
-    verified.claimRole !== "user" && verified.claimRole === dbRole
-      ? verified.claimRole
-      : "user";
-  return { uid: verified.uid, email: verified.email, role };
+  return { uid: verified.uid, email: verified.email, role: dbRole };
 }
 
 /** Untuk endpoint yang butuh uid + email + role. */

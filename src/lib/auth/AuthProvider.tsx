@@ -73,12 +73,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      let currentRole: UserRole = "user";
       let cancelled = false;
 
       const apply = (role: UserRole) => {
         if (cancelled) return;
-        currentRole = role;
         setState({
           uid: user.uid,
           isAnonymous: user.isAnonymous,
@@ -90,26 +88,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         });
       };
 
-      // Otorisasi = Custom Claim `role` di ID token (diset server).
-      const readClaim = async (force: boolean) => {
-        try {
-          const res = await user.getIdTokenResult(force);
-          apply(normalizeUserRole(res.claims.role));
-        } catch {
-          // Token dicabut (role diturunkan) / offline → perlakukan sebagai user.
-          apply("user");
-        }
-      };
-
-      void readClaim(false);
-
-      // Perubahan role di database (oleh owner) → refresh token agar claim baru
-      // terbaca, UI ikut berubah seketika tanpa reload.
+      // Otorisasi = users/{uid}/role di Realtime Database (hanya bisa ditulis
+      // server / Firebase Console). Diubah di console → UI ikut berubah realtime.
       unsubRole = onValue(
         ref(getRtdb(), `users/${user.uid}/role`),
         (snap) => {
-          const dbRole = normalizeUserRole(snap.val());
-          if (dbRole !== currentRole) void readClaim(true);
+          apply(normalizeUserRole(snap.val()));
           // Akun email yang belum tercatat → buat profil (role "user").
           if (
             !snap.exists() &&
@@ -122,7 +106,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             });
           }
         },
-        () => undefined
+        () => apply("user")
       );
 
       const prevUnsub = unsubRole;

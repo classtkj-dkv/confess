@@ -3,7 +3,7 @@
     ".read": false,
     ".write": false,
     "users": {
-      ".read": "auth != null && (auth.token.role === 'admin' || auth.token.role === 'owner') && root.child('users').child(auth.uid).child('role').val() === auth.token.role",
+      ".read": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('role').val() === 'owner')",
       ".indexOn": [
         "createdAt",
         "role"
@@ -14,7 +14,7 @@
       }
     },
     "confessions": {
-      ".read": "auth != null && (auth.token.role === 'moderator' || auth.token.role === 'admin' || auth.token.role === 'owner') && root.child('users').child(auth.uid).child('role').val() === auth.token.role",
+      ".read": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'moderator' || root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('role').val() === 'owner')",
       ".write": false,
       ".indexOn": [
         "status",
@@ -27,7 +27,7 @@
       }
     },
     "comments": {
-      ".read": "auth != null && (auth.token.role === 'moderator' || auth.token.role === 'admin' || auth.token.role === 'owner') && root.child('users').child(auth.uid).child('role').val() === auth.token.role",
+      ".read": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'moderator' || root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('role').val() === 'owner')",
       ".write": false,
       ".indexOn": [
         "status",
@@ -68,7 +68,7 @@
       }
     },
     "reports": {
-      ".read": "auth != null && (auth.token.role === 'moderator' || auth.token.role === 'admin' || auth.token.role === 'owner') && root.child('users').child(auth.uid).child('role').val() === auth.token.role",
+      ".read": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'moderator' || root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('role').val() === 'owner')",
       ".write": false,
       ".indexOn": [
         "status",
@@ -90,19 +90,19 @@
       ]
     },
     "audit_logs": {
-      ".read": "auth != null && (auth.token.role === 'admin' || auth.token.role === 'owner') && root.child('users').child(auth.uid).child('role').val() === auth.token.role",
+      ".read": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('role').val() === 'owner')",
       ".write": false,
       ".indexOn": [
         "timestamp"
       ]
     },
     "stats": {
-      ".read": "auth != null && (auth.token.role === 'moderator' || auth.token.role === 'admin' || auth.token.role === 'owner') && root.child('users').child(auth.uid).child('role').val() === auth.token.role",
+      ".read": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'moderator' || root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('role').val() === 'owner')",
       ".write": false
     },
     "meta": {
       "adminTick": {
-        ".read": "auth != null && (auth.token.role === 'moderator' || auth.token.role === 'admin' || auth.token.role === 'owner') && root.child('users').child(auth.uid).child('role').val() === auth.token.role",
+        ".read": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'moderator' || root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('role').val() === 'owner')",
         ".write": false
       }
     },

@@ -66,14 +66,16 @@ Ladder: **owner > admin > moderator > user**.
 | `moderator` | Moderasi confession/komentar/laporan + lihat statistik |
 | `user` | Confession, komentar, reaksi, laporan (default pendaftar baru) |
 
-- Otorisasi memakai **Firebase Custom Claim `role`** (diset server via Admin SDK).
-  Role efektif = claim **yang juga sama** dengan `users/{uid}/role` di RTDB;
-  kalau berbeda → diperlakukan `user`. Jadi: mengedit role di database **tidak**
-  bisa menaikkan hak akses (hanya bisa mencabutnya), dan role yang dicabut
-  langsung berlaku di endpoint server **dan** Security Rules.
-- Ubah role: Dashboard → **Users** (khusus owner) → `POST /api/admin/roles`:
-  verifikasi owner → set claim → (turun role: `revokeRefreshTokens`) → update
-  `users/{uid}/role` → tulis `audit_logs`. Dashboard & klien target berubah realtime.
+- Role = field `users/{uid}/role` di RTDB (satu-satunya sumber kebenaran). Server
+  membacanya di **setiap request** dan Security Rules memeriksa field yang sama,
+  jadi naik/turun role langsung berlaku tanpa login ulang. Klien tidak bisa menulis
+  ke `users/*`, sehingga tidak ada yang bisa menaikkan role-nya sendiri.
+- **Daftar → otomatis `user`:** akun yang mendaftar lewat panel di `/admin` dibuat
+  server dengan `role: "user"`.
+- **Naikkan role manual (cara termudah):** Firebase Console → Realtime Database →
+  Data → `users` → pilih akun (cocokkan field `email`) → ubah `role` menjadi
+  `moderator`, `admin`, atau `owner` → Enter. Dashboard terbuka otomatis (realtime).
+- Alternatif: Dashboard → **Users** (khusus owner) → `POST /api/admin/roles`.
 - **Owner pertama:** isi `ADMIN_SETUP_SECRET` di Vercel, daftar/masuk di `/admin`
   dengan email, lalu pakai panel "Aktifkan owner pertama". Hanya berfungsi selama
   belum ada owner.
@@ -141,7 +143,7 @@ Jangan commit `.env.local` atau service account JSON ke GitHub.
   diatur di settings), 10 komentar/jam, 10 laporan/hari, 1 like per (uid, confession).
 - Input disanitasi (`src/lib/security/sanitize.ts`) dan divalidasi
   (`src/lib/validations`). Tanpa `dangerouslySetInnerHTML`.
-- Rules + server sama-sama mensyaratkan claim `role` cocok dengan `users/{uid}/role`.
+- Rules + server sama-sama membaca role dari `users/{uid}/role`.
 
 ## Struktur
 

@@ -3,10 +3,10 @@ import type { UserRole } from "@/types";
 /**
  * Role ladder — owner > admin > moderator > user.
  *
- * OTORISASI = Firebase Custom Claim `role` (diset server lewat Admin SDK),
- * dan harus sama dengan profil `users/{uid}/role` di Realtime Database.
- * Mengubah role hanya lewat endpoint owner (/api/admin/roles) — mengedit
- * database manual TIDAK memberi akses, hanya bisa mencabutnya.
+ * OTORISASI = field `users/{uid}/role` di Realtime Database. Server membacanya
+ * di setiap request, jadi perubahan role langsung berlaku. Klien tidak punya
+ * hak tulis ke `users/*` (Security Rules) — role hanya diubah lewat Firebase
+ * Console, panel owner (/api/admin/roles), atau bootstrap (/api/admin/setup).
  */
 export const ROLE_RANK: Record<UserRole, number> = {
   user: 0,

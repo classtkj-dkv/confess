@@ -155,7 +155,7 @@ export function AdminClient() {
         <EmptyState
           icon="🔐"
           title="Akses admin diperlukan"
-          description="Dashboard hanya untuk akun dengan role moderator/admin/owner yang diverifikasi server (custom claim). Pendaftaran baru selalu ber-role user biasa — role naik hanya oleh owner."
+          description="Dashboard hanya untuk akun dengan role moderator/admin/owner yang diverifikasi server dari database. Pendaftaran baru selalu ber-role user biasa — role dinaikkan oleh owner (atau lewat Firebase Console)."
         />
         {/* Daftar manual: selalu ber-role user biasa */}
         <AuthAccountPanel />
@@ -754,7 +754,7 @@ function UserRows({
     void refresh();
   }
 
-  // Hanya OWNER: ubah role lewat server (custom claim + database + audit log).
+  // Hanya OWNER: ubah role lewat server (database + audit log).
   async function changeRole(uid: string, next: string) {
     if (!window.confirm(`Ubah role akun ini menjadi ${next.toUpperCase()}?`)) return;
     setBusy(uid);
