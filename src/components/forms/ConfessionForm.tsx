@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ApiClientError, api } from "@/lib/api";
 import { CATEGORIES } from "@/lib/categories";
@@ -11,6 +11,9 @@ import { Icon } from "@/components/ui/Icon";
 
 type Step = "compose" | "preview" | "sent";
 
+const NAME_KEY = "confess:fromName";
+const NAME_MAX = 30;
+
 export function ConfessionForm({ defaultCategory }: { defaultCategory?: string }) {
   const router = useRouter();
   const { toast } = useToast();
@@ -19,6 +22,18 @@ export function ConfessionForm({ defaultCategory }: { defaultCategory?: string }
   const [category, setCategory] = useState(defaultCategory ?? "");
   const [busy, setBusy] = useState(false);
   const [agree, setAgree] = useState(false);
+  const [fromName, setFromName] = useState("");
+  const [toName, setToName] = useState("");
+
+  // Nama pengirim diingat di browser ini supaya tidak perlu diketik ulang.
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(NAME_KEY);
+      if (saved) setFromName(saved);
+    } catch {
+      /* storage tidak tersedia */
+    }
+  }, []);
 
   const invalid = useMemo(
     () => !/[\p{L}\p{N}]/u.test(message),
@@ -40,10 +55,17 @@ export function ConfessionForm({ defaultCategory }: { defaultCategory?: string }
     setBusy(true);
     try {
       await api("/api/confessions", {
-        body: { message, category },
+        body: { message, category, fromName: fromName.trim(), toName: toName.trim() },
       });
+      try {
+        if (fromName.trim()) localStorage.setItem(NAME_KEY, fromName.trim());
+        else localStorage.removeItem(NAME_KEY);
+      } catch {
+        /* abaikan */
+      }
       setStep("sent");
       setMessage("");
+      setToName("");
       setCategory("");
       setAgree(false);
     } catch (err) {
@@ -91,11 +113,11 @@ export function ConfessionForm({ defaultCategory }: { defaultCategory?: string }
         <article className="card p-5">
           <header className="flex items-center gap-3">
             <span className="grid h-9 w-9 place-items-center rounded-full bg-primary/15 text-sm font-bold text-primary" aria-hidden>
-              A
+              {(fromName.trim() || "A").charAt(0).toUpperCase()}
             </span>
-            <div>
-              <p className="text-xs font-semibold text-ink">Anonim</p>
-              <p className="text-[11px] text-muted">Preview — publik setelah moderasi</p>
+            <div className="min-w-0">
+              <p className="truncate text-xs font-semibold text-ink">{fromName.trim() || "Anonim"}</p>
+              <p className="text-[11px] text-muted">Preview</p>
             </div>
             {categoryMeta && (
               <span className="badge ml-auto">
@@ -104,7 +126,12 @@ export function ConfessionForm({ defaultCategory }: { defaultCategory?: string }
               </span>
             )}
           </header>
-          <p className="mt-4 whitespace-pre-line text-sm text-ink/90">{message}</p>
+          {toName.trim() && (
+            <p className="mt-4 text-xs text-muted">
+              Untuk <span className="font-semibold text-ink">{toName.trim()}</span>
+            </p>
+          )}
+          <p className="mt-3 whitespace-pre-line text-sm text-ink/90">{message}</p>
         </article>
         <div className="flex gap-2">
           <button
@@ -136,6 +163,37 @@ export function ConfessionForm({ defaultCategory }: { defaultCategory?: string }
         if (!invalid) setStep("preview");
       }}
     >
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div>
+          <label htmlFor="from-name" className="label">
+            Dari <span className="font-normal text-muted">(opsional)</span>
+          </label>
+          <input
+            id="from-name"
+            value={fromName}
+            onChange={(e) => setFromName(e.target.value)}
+            maxLength={NAME_MAX}
+            placeholder="Anonim"
+            autoComplete="off"
+            className="input"
+          />
+        </div>
+        <div>
+          <label htmlFor="to-name" className="label">
+            Untuk <span className="font-normal text-muted">(opsional)</span>
+          </label>
+          <input
+            id="to-name"
+            value={toName}
+            onChange={(e) => setToName(e.target.value)}
+            maxLength={NAME_MAX}
+            placeholder="Siapa saja"
+            autoComplete="off"
+            className="input"
+          />
+        </div>
+      </div>
+
       <div>
         <label htmlFor="confession" className="label">
           Isi confessionmu

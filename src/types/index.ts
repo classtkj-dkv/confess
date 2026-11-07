@@ -9,6 +9,10 @@ export interface Confession {
   id: string;
   message: string;
   category: CategoryId;
+  /** Nama pengirim (opsional). Kosong = Anonim. */
+  fromName?: string;
+  /** Untuk siapa pesan ini (opsional). */
+  toName?: string;
   /** Hanya ada di data privat (staff/server); tidak pernah di data publik. */
   authorUid?: string;
   createdAt: number;
@@ -22,6 +26,12 @@ export interface ConfessionComment {
   confessionId: string;
   authorUid?: string;
   message: string;
+  /** Nama pengirim (opsional). Kosong = Anonim. */
+  fromName?: string;
+  /** Id komentar induk bila ini balasan (selalu komentar tingkat atas). */
+  parentId?: string;
+  /** Nama yang dibalas. */
+  replyToName?: string;
   createdAt: number;
   status: CommentStatus;
 }

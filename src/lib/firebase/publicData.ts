@@ -10,9 +10,13 @@ export function publicConfessionOf(
   id: string,
   c: Record<string, unknown>
 ): Record<string, unknown> {
+  const fromName = String(c.fromName ?? "");
+  const toName = String(c.toName ?? "");
   return {
     id,
     message: String(c.message ?? ""),
+    ...(fromName ? { fromName } : {}),
+    ...(toName ? { toName } : {}),
     messageLower: String(c.messageLower ?? String(c.message ?? "").toLowerCase()),
     category: String(c.category ?? "random"),
     createdAt: Number(c.createdAt ?? 0),
@@ -25,10 +29,16 @@ export function publicCommentOf(
   id: string,
   c: Record<string, unknown>
 ): Record<string, unknown> {
+  const fromName = String(c.fromName ?? "");
+  const parentId = String(c.parentId ?? "");
+  const replyToName = String(c.replyToName ?? "");
   return {
     id,
     confessionId: String(c.confessionId ?? ""),
     message: String(c.message ?? ""),
+    ...(fromName ? { fromName } : {}),
+    ...(parentId ? { parentId } : {}),
+    ...(parentId && replyToName ? { replyToName } : {}),
     createdAt: Number(c.createdAt ?? 0),
   };
 }

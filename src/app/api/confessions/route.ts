@@ -46,7 +46,7 @@ export async function POST(req: NextRequest): Promise<Response> {
       throw new ApiError(400, "Body JSON tidak valid.");
     }
 
-    const { message, category } = validateConfessionInput(raw);
+    const { message, category, fromName, toName } = validateConfessionInput(raw);
 
     if (!isCategoryId(category)) {
       throw new ApiError(400, "Kategori tidak valid.");
@@ -118,6 +118,8 @@ export async function POST(req: NextRequest): Promise<Response> {
       message: finalMessage,
       messageLower: finalMessage.toLowerCase(),
       category,
+      ...(fromName ? { fromName } : {}),
+      ...(toName ? { toName } : {}),
       authorUid: uid,
       createdAt: now,
       updatedAt: now,

@@ -55,6 +55,8 @@ function toConfession(id: string, data: Record<string, unknown>): Confession {
     id,
     message: String(data.message ?? ""),
     category: (data.category ?? "random") as Confession["category"],
+    fromName: data.fromName ? String(data.fromName) : undefined,
+    toName: data.toName ? String(data.toName) : undefined,
     createdAt: Number(data.createdAt ?? 0),
     status: "PUBLISHED",
     likesCount: Number(data.likesCount ?? 0),
@@ -71,6 +73,9 @@ function toComment(
     id,
     confessionId,
     message: String(data.message ?? ""),
+    fromName: data.fromName ? String(data.fromName) : undefined,
+    parentId: data.parentId ? String(data.parentId) : undefined,
+    replyToName: data.replyToName ? String(data.replyToName) : undefined,
     createdAt: Number(data.createdAt ?? 0),
     status: "VISIBLE",
   };

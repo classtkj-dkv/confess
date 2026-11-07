@@ -32,7 +32,7 @@ export async function POST(req: NextRequest): Promise<Response> {
     if (!/^[a-zA-Z0-9_-]{5,64}$/.test(confessionId)) {
       throw new ApiError(400, "Confession tidak ditemukan.");
     }
-    const clean = validateCommentInput(raw);
+    const { message: clean, fromName, parentId } = validateCommentInput(raw);
 
     const db = getAdminRtdb();
 
@@ -59,6 +59,20 @@ export async function POST(req: NextRequest): Promise<Response> {
       throw new ApiError(404, "Confession tidak ditemukan atau tidak aktif.");
     }
 
+    // Balasan: induk harus komentar tayang di confession yang sama.
+    // Balasan dari balasan dirapikan ke komentar tingkat atas (satu level).
+    let rootId = "";
+    let replyToName = "";
+    if (parentId) {
+      const parentSnap = await db.ref(`public/comments/${confessionId}/${parentId}`).get();
+      if (!parentSnap.exists()) {
+        throw new ApiError(404, "Komentar yang dibalas sudah tidak ada.");
+      }
+      const parent = parentSnap.val() as Record<string, unknown>;
+      rootId = String(parent.parentId || parentId);
+      replyToName = String(parent.fromName || "Anonim");
+    }
+
     const ref = db.ref("comments").push();
     const commentId = ref.key as string;
     const record = {
@@ -66,6 +80,8 @@ export async function POST(req: NextRequest): Promise<Response> {
       confessionId,
       authorUid: uid,
       message: clean,
+      ...(fromName ? { fromName } : {}),
+      ...(rootId ? { parentId: rootId, replyToName } : {}),
       createdAt: Date.now(),
       status: "VISIBLE",
     };

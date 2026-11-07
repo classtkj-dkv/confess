@@ -13,13 +13,13 @@ import type { Confession } from "@/types";
 import { formatNumber, formatRelativeTime } from "@/utils/format";
 import { Icon } from "@/components/ui/Icon";
 
-function AnonymousAvatar() {
+function AnonymousAvatar({ name }: { name?: string }) {
   return (
     <span
       aria-hidden
       className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-primary/15 text-sm font-bold text-primary"
     >
-      A
+      {(name || "A").trim().charAt(0).toUpperCase()}
     </span>
   );
 }
@@ -235,9 +235,9 @@ export function ConfessionCard({
   return (
     <article className={`card transition-shadow duration-200 hover:shadow-lift ${compact ? "p-4" : "p-5"}`}>
       <header className="flex items-center gap-3">
-        <AnonymousAvatar />
+        <AnonymousAvatar name={confession.fromName} />
         <div className="min-w-0 flex-1">
-          <p className="text-xs font-semibold text-ink">Anonim</p>
+          <p className="truncate text-xs font-semibold text-ink">{confession.fromName || "Anonim"}</p>
           <time dateTime={new Date(confession.createdAt).toISOString()} className="text-[11px] text-muted">
             {formatRelativeTime(confession.createdAt)}
           </time>
@@ -249,6 +249,11 @@ export function ConfessionCard({
       </header>
 
       <div className={`mt-3 ${compact ? "" : "space-y-3"}`}>
+        {confession.toName && (
+          <p className="text-xs text-muted">
+            Untuk <span className="font-semibold text-ink">{confession.toName}</span>
+          </p>
+        )}
         <p className={`text-sm whitespace-pre-line text-ink/90 ${compact ? "line-clamp-4" : ""}`}>
           {confession.message}
         </p>

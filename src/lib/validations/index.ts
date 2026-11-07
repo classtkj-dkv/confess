@@ -3,10 +3,19 @@ import { sanitizeText } from "@/lib/security/sanitize";
 
 const MAX_CONFESSION_LENGTH = 1000;
 const MAX_COMMENT_LENGTH = 500;
+const MAX_NAME_LENGTH = 30;
+
+/** Nama opsional: satu baris, tanpa HTML, dipotong diam-diam. */
+export function cleanName(value: unknown): string {
+  if (typeof value !== "string") return "";
+  return sanitizeText(value.replace(/[\r\n]+/g, " "), MAX_NAME_LENGTH).trim();
+}
 
 export interface ValidatedConfessionInput {
   message: string;
   category: string;
+  fromName: string;
+  toName: string;
 }
 
 export function validateConfessionInput(
@@ -15,7 +24,7 @@ export function validateConfessionInput(
   if (typeof body !== "object" || body === null) {
     throw new Error("Payload tidak valid.");
   }
-  const { message, category } = body as Record<string, unknown>;
+  const { message, category, fromName, toName } = body as Record<string, unknown>;
 
   if (typeof message !== "string" || !/[\p{L}\p{N}]/u.test(message)) {
     throw new Error("Confession tidak boleh kosong.");
@@ -30,14 +39,20 @@ export function validateConfessionInput(
   return {
     message: sanitizeText(message, MAX_CONFESSION_LENGTH),
     category,
+    fromName: cleanName(fromName),
+    toName: cleanName(toName),
   };
 }
 
-export function validateCommentInput(body: unknown): string {
+export function validateCommentInput(body: unknown): {
+  message: string;
+  fromName: string;
+  parentId: string;
+} {
   if (typeof body !== "object" || body === null) {
     throw new Error("Payload tidak valid.");
   }
-  const { confessionId, message } = body as Record<string, unknown>;
+  const { confessionId, message, fromName, parentId } = body as Record<string, unknown>;
 
   if (typeof confessionId !== "string" || !/^[a-zA-Z0-9_-]{5,64}$/.test(confessionId)) {
     throw new Error("Confession tidak ditemukan.");
@@ -48,7 +63,12 @@ export function validateCommentInput(body: unknown): string {
   if (Array.from(message).length > MAX_COMMENT_LENGTH) {
     throw new Error("Komentar maksimal 500 karakter.");
   }
-  return sanitizeText(message, MAX_COMMENT_LENGTH);
+  return {
+    message: sanitizeText(message, MAX_COMMENT_LENGTH),
+    fromName: cleanName(fromName),
+    parentId:
+      typeof parentId === "string" && /^[a-zA-Z0-9_-]{5,64}$/.test(parentId) ? parentId : "",
+  };
 }
 
 export function validateReportInput(body: unknown): {
