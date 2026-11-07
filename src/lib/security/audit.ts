@@ -24,6 +24,33 @@ export async function writeAudit(
 }
 
 /**
+ * Log aktivitas PENGGUNA (daftar, masuk, kirim confession, komentar, like,
+ * laporan, sesi anonim baru) → node `activity_logs` di Realtime Database.
+ * Gagal tulis tidak boleh memblokir aksi.
+ */
+export async function writeActivity(
+  uid: string,
+  type: string,
+  target = "",
+  extra?: Record<string, unknown>
+): Promise<void> {
+  try {
+    const ref = getAdminRtdb().ref("activity_logs").push();
+    await ref.set({
+      id: ref.key,
+      actorUid: uid,
+      action: type,
+      target,
+      timestamp: Date.now(),
+      ...(extra ? { meta: extra } : {}),
+    });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("[activity] gagal menulis log:", err);
+  }
+}
+
+/**
  * Sinyal realtime untuk dashboard: setiap mutasi server menaikkan
  * meta/adminTick, dashboard (onValue) lalu memuat ulang tab aktif.
  */

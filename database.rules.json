@@ -109,6 +109,13 @@
     "rateLimits": {
       ".read": false,
       ".write": false
+    },
+    "activity_logs": {
+      ".read": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('role').val() === 'owner')",
+      ".write": false,
+      ".indexOn": [
+        "timestamp"
+      ]
     }
   }
 }

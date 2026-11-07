@@ -32,7 +32,8 @@ Build produksi: `npm run build && npm start`.
 ## Struktur database
 
 ```
-users/{uid}            displayName, email, role, status, isBlocked, createdAt, updatedAt
+users/{uid}            SEMUA akun Auth (email + anonim): email, displayName, role, isAnonymous,
+                       status, isBlocked, createdAt, registeredAt, lastLoginAt, updatedAt
 confessions/{id}       PRIVAT: message, messageLower, category, authorUid, status,
                        likesCount, commentsCount, createdAt, updatedAt
 comments/{id}          PRIVAT: confessionId, authorUid, message, status, createdAt
@@ -42,7 +43,9 @@ reactions/{confId}/{uid}       type, createdAt   (hanya pemilik yang bisa baca)
 reports/{id}           confessionId, reporterUid, reason, detail, status, createdAt
 settings/general       websiteName, announcement, maintenanceMode, allowComments,
                        allowConfessions, maxConfessionLength, dailySubmissionLimit
-audit_logs/{id}        actorUid, action, target, timestamp
+audit_logs/{id}        tindakan staff: actorUid, action, target, timestamp
+activity_logs/{id}     aktivitas pengguna: register, login, anonymous_session, user_created,
+                       confession_submitted, comment_created, like/unlike, report_created
 stats                  snapshot ringkasan (diperbarui saat dashboard dibuka)
 meta/adminTick         sinyal realtime dashboard (dinaikkan server di tiap mutasi)
 rateLimits/*           hanya server

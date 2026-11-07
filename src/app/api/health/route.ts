@@ -1,4 +1,4 @@
-import { getAdminRtdb } from "@/lib/firebase/admin";
+import { getAdminAuth, getAdminRtdb } from "@/lib/firebase/admin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -25,10 +25,19 @@ export async function GET(): Promise<Response> {
   } catch (err) {
     rtdb = { ok: false, error: err instanceof Error ? err.message.slice(0, 200) : "unknown" };
   }
+  // Admin Auth: bukti kredensial service account benar (dipakai verifikasi token).
+  let adminAuth: { ok: boolean; error?: string } = { ok: false };
+  try {
+    await getAdminAuth().listUsers(1);
+    adminAuth = { ok: true };
+  } catch (err) {
+    adminAuth = { ok: false, error: err instanceof Error ? err.message.slice(0, 200) : "unknown" };
+  }
   return Response.json({
     version: "rtdb-migration",
     env,
     databaseUrlLooksValid: /^https:\/\/.+\.(firebaseio\.com|firebasedatabase\.app)\/?$/.test(dbUrl),
     rtdb,
+    adminAuth,
   });
 }

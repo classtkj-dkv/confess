@@ -8,7 +8,7 @@ import {
   updateProfile,
 } from "firebase/auth";
 import { getAuthClient, isFirebaseConfigured } from "@/lib/firebase/client";
-import { api } from "@/lib/api";
+import { api, ApiClientError } from "@/lib/api";
 
 export class EmailAuthError extends Error {
   constructor(message: string) {
@@ -97,17 +97,9 @@ export async function registerWithEmail(
     }
   }
 
-  // Buat / pastikan dokumen users/{uid} dengan role "user".
-  for (let attempt = 0; attempt < 2; attempt++) {
-    try {
-      await api("/api/auth/profile", {
-        body: { displayName: displayName?.trim() },
-      });
-      break;
-    } catch {
-      /* dicoba ulang sekali; bila tetap gagal, AuthProvider membuatnya saat login. */
-    }
-  }
+  // Catat akun ke Realtime Database (users/{uid}, role "user") + activity_logs.
+  // Bila gagal, TAMPILKAN penyebabnya — jangan diam-diam (akun Auth sudah terbuat).
+  await syncProfile({ displayName: displayName?.trim(), event: "register" });
 
   return uid;
 }
@@ -126,8 +118,31 @@ export async function loginWithEmail(
       email.trim().toLowerCase(),
       password
     );
+    // Pastikan users/{uid} ada + catat aktivitas "login".
+    await syncProfile({ event: "login" });
     return res.user.uid;
   } catch (err) {
+    if (err instanceof EmailAuthError) throw err;
     throw new EmailAuthError(friendlyAuthError(err));
   }
+}
+
+async function syncProfile(body: {
+  displayName?: string;
+  event: "register" | "login";
+}): Promise<void> {
+  let lastError: unknown = null;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      await api("/api/auth/profile", { body });
+      return;
+    } catch (err) {
+      lastError = err;
+    }
+  }
+  const reason =
+    lastError instanceof ApiClientError ? lastError.message : "Server tidak merespons.";
+  throw new EmailAuthError(
+    `Akun berhasil di Firebase Auth, tetapi GAGAL dicatat ke Realtime Database. ${reason}`
+  );
 }

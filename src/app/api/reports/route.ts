@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
 import { getAdminRtdb } from "@/lib/firebase/admin";
-import { touchAdmin } from "@/lib/security/audit";
+import { touchAdmin, writeActivity } from "@/lib/security/audit";
 import {
   ApiError,
   assertNotBlocked,
@@ -64,6 +64,7 @@ export async function POST(req: NextRequest): Promise<Response> {
       status: "OPEN",
     });
     await touchAdmin();
+    await writeActivity(uid, "report_created", reportId, { confessionId: input.confessionId, reason: input.reason });
 
     return Response.json({ ok: true, id: reportId }, { status: 201 });
   } catch (err) {

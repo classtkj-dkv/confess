@@ -32,7 +32,9 @@ export async function GET(req: NextRequest): Promise<Response> {
       rejectedConfessions: rejected.numChildren(),
       totalComments: comments.numChildren(),
       openReports: openReports.numChildren(),
-      totalUsers: users.numChildren(),
+      totalUsers: Object.values(
+        (users.val() ?? {}) as Record<string, Record<string, unknown>>
+      ).filter((u) => Boolean(u?.email)).length,
       last7DaysConfessions: recent.numChildren(),
     };
 

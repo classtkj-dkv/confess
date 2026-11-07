@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 import { ServerValue } from "firebase-admin/database";
 import { getAdminRtdb } from "@/lib/firebase/admin";
+import { writeActivity } from "@/lib/security/audit";
 import {
   ApiError,
   assertNotBlocked,
@@ -72,6 +73,7 @@ export async function POST(req: NextRequest): Promise<Response> {
       });
     }
 
+    await writeActivity(uid, liked ? "like" : "unlike", String(confessionId));
     return Response.json({ ok: true, liked });
   } catch (err) {
     return errorResponse(err);

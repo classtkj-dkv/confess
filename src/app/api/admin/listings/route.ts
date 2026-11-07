@@ -84,7 +84,10 @@ export async function GET(req: NextRequest): Promise<Response> {
       const snap = await getAdminRtdb().ref("users").get();
       const all = Object.entries(
         (snap.val() ?? {}) as Record<string, Record<string, unknown>>
-      ).map(([uid, d]) => ({
+      )
+        // Akun anonim tetap tercatat di RTDB, tetapi daftar admin hanya akun terdaftar.
+        .filter(([, d]) => Boolean(d?.email))
+        .map(([uid, d]) => ({
         uid,
         email: String(d?.email ?? ""),
         displayName: String(d?.displayName ?? ""),
@@ -101,7 +104,8 @@ export async function GET(req: NextRequest): Promise<Response> {
 
     if (resource === "audit") {
       await requireAdmin(req);
-      const rows = await fetchRows("audit_logs", "timestamp", null, page, pageSize);
+      const source = url.searchParams.get("source") === "activity" ? "activity_logs" : "audit_logs";
+      const rows = await fetchRows(source, "timestamp", null, page, pageSize);
       const items = rows.map((d) => ({
         id: d.id,
         actorUid: String(d.actorUid ?? ""),

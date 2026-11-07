@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
 import { getAdminRtdb } from "@/lib/firebase/admin";
-import { touchAdmin } from "@/lib/security/audit";
+import { touchAdmin, writeActivity } from "@/lib/security/audit";
 import {
   ApiError,
   assertNotBlocked,
@@ -127,6 +127,7 @@ export async function POST(req: NextRequest): Promise<Response> {
       commentsCount: 0,
     });
     await touchAdmin();
+    await writeActivity(uid, "confession_submitted", String(ref.key), { category });
 
     return Response.json(
       { ok: true, id: ref.key, status: "PENDING" },

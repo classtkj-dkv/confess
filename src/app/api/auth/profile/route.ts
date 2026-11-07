@@ -8,6 +8,7 @@ import {
   requireAuth,
 } from "@/lib/security/apiHelpers";
 import { sanitizeText } from "@/lib/security/sanitize";
+import { writeActivity } from "@/lib/security/audit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -20,9 +21,9 @@ export const dynamic = "force-dynamic";
  */
 export async function POST(req: NextRequest): Promise<Response> {
   try {
-    const { uid, email, role } = await requireAuth(req);
+    const { uid, email, role, isAnonymous } = await requireAuth(req);
     await assertNotBlocked(uid);
-    await ensureUserDoc(uid, email);
+    await ensureUserDoc(uid, email, isAnonymous);
 
     let body: unknown = {};
     try {
@@ -34,10 +35,23 @@ export async function POST(req: NextRequest): Promise<Response> {
       (body as Record<string, unknown>)?.displayName,
       40
     );
+    const event = (body as Record<string, unknown>)?.event;
+    const patch: Record<string, unknown> = {};
     if (displayName) {
-      await getAdminRtdb()
-        .ref(`users/${uid}`)
-        .update({ displayName, profileUpdatedAt: Date.now() });
+      patch.displayName = displayName;
+      patch.profileUpdatedAt = Date.now();
+    }
+    if (!isAnonymous && email) {
+      patch.email = email;
+      patch.isAnonymous = false;
+      if (event === "login") patch.lastLoginAt = Date.now();
+      if (event === "register") patch.registeredAt = Date.now();
+    }
+    if (Object.keys(patch).length > 0) {
+      await getAdminRtdb().ref(`users/${uid}`).update(patch);
+    }
+    if (event === "register" || event === "login") {
+      await writeActivity(uid, event, email ?? "");
     }
 
     return Response.json({ ok: true, role });

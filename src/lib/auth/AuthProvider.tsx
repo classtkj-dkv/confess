@@ -94,12 +94,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         ref(getRtdb(), `users/${user.uid}/role`),
         (snap) => {
           apply(normalizeUserRole(snap.val()));
-          // Akun email yang belum tercatat → buat profil (role "user").
-          if (
-            !snap.exists() &&
-            !user.isAnonymous &&
-            profileSynced.current !== user.uid
-          ) {
+          // Akun Auth (email / anonim) yang belum tercatat → buat profil (role "user").
+          if (!snap.exists() && profileSynced.current !== user.uid) {
             profileSynced.current = user.uid;
             api("/api/auth/profile", { body: {} }).catch(() => {
               profileSynced.current = null;

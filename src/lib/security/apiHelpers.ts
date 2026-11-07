@@ -1,5 +1,6 @@
 import type { NextRequest } from "next/server";
 import { getAdminAuth, getAdminRtdb } from "@/lib/firebase/admin";
+import { writeActivity } from "@/lib/security/audit";
 import { normalizeUserRole, rank } from "@/lib/auth/roles";
 import type { UserRole } from "@/types";
 
@@ -13,6 +14,24 @@ export class ApiError extends Error {
   }
 }
 
+/** Petunjuk konfigurasi (tanpa membocorkan nilai rahasia) untuk error server. */
+function configHint(err: unknown): string {
+  const msg = err instanceof Error ? err.message : String(err);
+  if (/database url|databaseurl|FIREBASE_DATABASE_URL/i.test(msg)) {
+    return "Petunjuk: NEXT_PUBLIC_FIREBASE_DATABASE_URL belum diisi/salah di Vercel (redeploy setelah mengisi).";
+  }
+  if (/belum dikonfigurasi|FIREBASE_ADMIN/i.test(msg)) {
+    return "Petunjuk: FIREBASE_ADMIN_PROJECT_ID / CLIENT_EMAIL / PRIVATE_KEY belum lengkap di Vercel.";
+  }
+  if (/private key|PEM|credential|invalid_grant|DECODER|asn1/i.test(msg)) {
+    return "Petunjuk: FIREBASE_ADMIN_PRIVATE_KEY tidak valid — salin seluruh nilai private_key dari JSON service account.";
+  }
+  if (/permission|PERMISSION_DENIED|forbidden/i.test(msg)) {
+    return "Petunjuk: service account tidak punya akses ke Realtime Database proyek ini.";
+  }
+  return "Coba lagi nanti.";
+}
+
 export function errorResponse(err: unknown): Response {
   if (err instanceof ApiError) {
     return Response.json(
@@ -23,7 +42,7 @@ export function errorResponse(err: unknown): Response {
   // eslint-disable-next-line no-console
   console.error("[api] unhandled error:", err);
   return Response.json(
-    { error: "Terjadi kesalahan di server. Coba lagi nanti." },
+    { error: `Terjadi kesalahan di server. ${configHint(err)}`.trim() },
     { status: 500 }
   );
 }
@@ -58,6 +77,7 @@ export interface AuthContext {
   uid: string;
   email: string | null;
   role: UserRole;
+  isAnonymous: boolean;
 }
 
 /**
@@ -81,17 +101,24 @@ async function getAuthContext(req: NextRequest): Promise<AuthContext> {
   const snap = await ref.get();
   let dbRole: UserRole = "user";
   if (!snap.exists()) {
-    if (verified.email && !verified.isAnonymous) {
-      await ensureUserDoc(verified.uid, verified.email);
-    }
+    // Semua akun Auth (termasuk anonim) tercatat di users/{uid}.
+    await ensureUserDoc(verified.uid, verified.email, verified.isAnonymous);
   } else {
     const data = snap.val() as Record<string, unknown>;
     dbRole = normalizeUserRole(data?.role);
-    if (verified.email && data?.email !== verified.email) {
-      await ref.update({ email: verified.email, updatedAt: Date.now() });
+    const patch: Record<string, unknown> = {};
+    if (verified.email && data?.email !== verified.email) patch.email = verified.email;
+    if (data?.isAnonymous !== verified.isAnonymous) patch.isAnonymous = verified.isAnonymous;
+    if (Object.keys(patch).length > 0) {
+      await ref.update({ ...patch, updatedAt: Date.now() });
     }
   }
-  return { uid: verified.uid, email: verified.email, role: dbRole };
+  return {
+    uid: verified.uid,
+    email: verified.email,
+    role: dbRole,
+    isAnonymous: verified.isAnonymous,
+  };
 }
 
 /** Untuk endpoint yang butuh uid + email + role. */
@@ -148,7 +175,8 @@ export async function assertNotBlocked(uid: string): Promise<void> {
  */
 export async function ensureUserDoc(
   uid: string,
-  email?: string | null
+  email?: string | null,
+  isAnonymous = false
 ): Promise<UserRole> {
   const ref = getAdminRtdb().ref(`users/${uid}`);
   const snap = await ref.get();
@@ -165,10 +193,12 @@ export async function ensureUserDoc(
     email: email ?? "",
     displayName: "",
     role: "user",
+    isAnonymous,
     status: "active",
     isBlocked: false,
     createdAt: now,
     updatedAt: now,
   });
+  await writeActivity(uid, isAnonymous ? "anonymous_session" : "user_created", email ?? "");
   return "user";
 }

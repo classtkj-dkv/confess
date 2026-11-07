@@ -11,7 +11,7 @@ import { checkRateLimit, RATE_LIMITS } from "@/lib/security/rateLimit";
 import { validateCommentInput } from "@/lib/validations";
 import { getAdminSettings } from "@/lib/firebase/settings";
 import { publicCommentOf } from "@/lib/firebase/publicData";
-import { touchAdmin } from "@/lib/security/audit";
+import { touchAdmin, writeActivity } from "@/lib/security/audit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -77,6 +77,7 @@ export async function POST(req: NextRequest): Promise<Response> {
       [`public/confessions/${confessionId}/commentsCount`]: ServerValue.increment(1),
     });
     await touchAdmin();
+    await writeActivity(uid, "comment_created", commentId, { confessionId });
 
     return Response.json(
       { ok: true, id: commentId, status: "VISIBLE" },

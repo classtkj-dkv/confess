@@ -1097,14 +1097,16 @@ interface AuditRow {
 }
 
 function AuditRows() {
+  const [source, setSource] = useState<"audit" | "activity">("audit");
   const [rows, setRows] = useState<AuditRow[] | null>(null);
   useEffect(() => {
     let alive = true;
+    setRows(null);
     void (async () => {
       try {
-        const data = (await api("/api/admin/listings?type=audit&pageSize=50")) as {
-          items: AuditRow[];
-        };
+        const data = (await api(
+          `/api/admin/listings?type=audit&source=${source}&pageSize=50`
+        )) as { items: AuditRow[] };
         if (alive) setRows(data.items ?? []);
       } catch {
         if (alive) setRows([]);
@@ -1113,11 +1115,33 @@ function AuditRows() {
     return () => {
       alive = false;
     };
-  }, []);
+  }, [source]);
 
   return (
     <section className="space-y-4">
-      <h2 className="text-base font-bold text-ink">Audit log</h2>
+      <div className="flex flex-wrap items-center gap-2">
+        <h2 className="mr-auto text-base font-bold text-ink">Log</h2>
+        {(
+          [
+            ["audit", "🧾 Tindakan staff"],
+            ["activity", "👤 Aktivitas pengguna"],
+          ] as const
+        ).map(([id, label]) => (
+          <button
+            key={id}
+            type="button"
+            aria-pressed={source === id}
+            onClick={() => setSource(id)}
+            className={`focus-ring rounded-full border px-3 py-1 text-xs font-semibold ${
+              source === id
+                ? "border-primary bg-primary/15 text-primary"
+                : "border-hairline bg-surface text-muted"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
       {rows === null ? (
         <StatSkeleton />
       ) : rows.length === 0 ? (
@@ -1127,7 +1151,9 @@ function AuditRows() {
           <div key={r.id} className="card flex flex-wrap items-center gap-3 p-4 text-xs">
             <span className="badge font-mono">{r.action}</span>
             <span className="text-muted">oleh {shortUid(r.actorUid)}</span>
-            <span className="font-mono text-muted">→ {shortUid(r.target)}</span>
+            <span className="break-all font-mono text-muted">
+              → {source === "activity" ? r.target || "—" : shortUid(r.target)}
+            </span>
             <span className="ml-auto text-[11px] text-muted">{formatDateTime(r.timestamp)}</span>
           </div>
         ))
