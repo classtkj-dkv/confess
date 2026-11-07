@@ -8,6 +8,7 @@ import { useToast } from "@/lib/auth/ToastProvider";
 import { MAX_CONFESSION_LENGTH } from "@/lib/validations";
 import { getCategory } from "@/lib/categories";
 import { charCount } from "@/utils/format";
+import { Icon } from "@/components/ui/Icon";
 
 type Step = "compose" | "preview" | "sent";
 
@@ -61,8 +62,8 @@ export function ConfessionForm({ defaultCategory }: { defaultCategory?: string }
   if (step === "sent") {
     return (
       <div className="card px-6 py-12 text-center" role="status">
-        <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-success/10 text-2xl">
-          🕒
+        <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-success/10 text-success">
+          <Icon name="clock" className="h-7 w-7" />
         </div>
         <h2 className="mt-4 text-lg font-bold text-ink">
           Confession terkirim, sedang menunggu moderasi
@@ -101,7 +102,7 @@ export function ConfessionForm({ defaultCategory }: { defaultCategory?: string }
             </div>
             {categoryMeta && (
               <span className="badge ml-auto">
-                <span aria-hidden>{categoryMeta.emoji}</span>
+                <Icon name={categoryMeta.icon} className="inline h-3.5 w-3.5 align-[-2px]" />
                 {categoryMeta.label}
               </span>
             )}
@@ -184,7 +185,7 @@ export function ConfessionForm({ defaultCategory }: { defaultCategory?: string }
                   : "border-hairline bg-surface text-muted hover:text-ink"
               }`}
             >
-              <span aria-hidden>{c.emoji}</span>
+              <Icon name={c.icon} className="inline h-3.5 w-3.5 align-[-2px]" />
               {c.label}
             </button>
           ))}

@@ -1,20 +1,21 @@
 import type { ReactNode } from "react";
+import { Icon, type IconName } from "@/components/ui/Icon";
 
 export function EmptyState({
-  icon = "📭",
+  icon = "inbox",
   title,
   description,
   action,
 }: {
-  icon?: ReactNode;
+  icon?: IconName;
   title: string;
   description?: string;
   action?: ReactNode;
 }) {
   return (
     <div className="card flex flex-col items-center gap-3 px-6 py-12 text-center">
-      <div className="grid h-14 w-14 place-items-center rounded-2xl bg-surface text-2xl">
-        {icon}
+      <div className="grid h-14 w-14 place-items-center rounded-2xl bg-surface text-muted">
+        <Icon name={icon} className="h-7 w-7" />
       </div>
       <h3 className="text-base font-semibold text-ink">{title}</h3>
       {description && (
@@ -39,8 +40,8 @@ export function ErrorState({
       role="alert"
       className="card flex flex-col items-center gap-3 px-6 py-12 text-center"
     >
-      <div className="grid h-14 w-14 place-items-center rounded-2xl bg-danger/10 text-2xl">
-        ⛔
+      <div className="grid h-14 w-14 place-items-center rounded-2xl bg-danger/10 text-danger">
+        <Icon name="xcircle" className="h-7 w-7" />
       </div>
       <h3 className="text-base font-semibold text-ink">{title}</h3>
       <p className="max-w-sm text-sm text-muted">{description}</p>

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { EmailAuthError, loginWithEmail, registerWithEmail } from "@/lib/auth/emailAuth";
 import { useAuth } from "@/lib/auth/AuthProvider";
 import { useToast } from "@/lib/auth/ToastProvider";
+import { Icon } from "@/components/ui/Icon";
 
 /**
  * Panel Daftar / Masuk — ditampilkan di halaman /admin bagi pengunjung yang
@@ -56,8 +57,9 @@ export function AuthAccountPanel() {
 
   return (
     <section aria-labelledby="auth-title" className="card mt-6 p-5">
-      <h2 id="auth-title" className="text-base font-bold text-ink">
-        {mode === "register" ? "📝 Daftar akun" : "🔑 Masuk"}
+      <h2 id="auth-title" className="flex items-center gap-2 text-base font-bold text-ink">
+        <Icon name={mode === "register" ? "pencil" : "key"} className="h-4 w-4 text-primary" />
+        {mode === "register" ? "Daftar akun" : "Masuk"}
       </h2>
       <p className="mt-1 text-xs text-muted">
         {mode === "register" ? (

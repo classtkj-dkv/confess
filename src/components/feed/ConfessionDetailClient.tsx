@@ -80,7 +80,7 @@ export function ConfessionDetailClient() {
   if (status === "empty" || !confession) {
     return (
       <EmptyState
-        icon="🔍"
+        icon="search"
         title="Confession tidak ditemukan"
         description="Mungkin confession ini sudah dihapus atau belum disetujui moderasi."
       />

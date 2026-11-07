@@ -1,9 +1,10 @@
 import type { CategoryId, ReportReason } from "@/types";
+import type { IconName } from "@/components/ui/Icon";
 
 export interface CategoryMeta {
   id: CategoryId;
   label: string;
-  emoji: string;
+  icon: IconName;
   description: string;
 }
 
@@ -11,37 +12,37 @@ export const CATEGORIES: readonly CategoryMeta[] = [
   {
     id: "love",
     label: "Love",
-    emoji: "❤️",
+    icon: "heart",
     description: "Deklarasi, suka-suka, dan cerita hati.",
   },
   {
     id: "curhat",
     label: "Curhat",
-    emoji: "💬",
+    icon: "message",
     description: "Cerita dan beban yang ingin kamu luapkan.",
   },
   {
     id: "school",
     label: "School",
-    emoji: "🏫",
+    icon: "school",
     description: "Hal-hal seputar sekolah, tugas, dan guru.",
   },
   {
     id: "friendship",
     label: "Friendship",
-    emoji: "🤝",
+    icon: "circles",
     description: "Sahabat, mantan teman, dan dinamika pertemanan.",
   },
   {
     id: "life",
     label: "Life",
-    emoji: "🌙",
+    icon: "moon",
     description: "Kehidupan, mimpi, dan refleksi diri.",
   },
   {
     id: "random",
     label: "Random",
-    emoji: "🎲",
+    icon: "dice",
     description: "Apapun yang tidak termasuk kategori lain.",
   },
 ] as const;

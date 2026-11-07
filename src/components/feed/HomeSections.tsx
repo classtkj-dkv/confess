@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { SearchBar } from "@/components/layout/SearchBar";
 import type { CategoryMeta } from "@/lib/categories";
+import { Icon } from "@/components/ui/Icon";
 
 export function HeroSection() {
   return (
@@ -17,7 +18,7 @@ export function HeroSection() {
       />
       <div className="relative max-w-xl">
         <span className="badge">
-          <span aria-hidden>🫣</span> 100% anonim
+          <Icon name="eyeoff" className="h-3.5 w-3.5" /> 100% anonim
         </span>
         <h1 className="mt-4 text-3xl font-extrabold leading-tight tracking-tight text-ink sm:text-4xl">
           Ceritakan apa yang ada di{" "}
@@ -28,7 +29,7 @@ export function HeroSection() {
         </p>
         <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center">
           <Link href="/confess" className="btn-primary sm:w-auto">
-            ✍️ Tulis Confess
+            <Icon name="pencil" className="mr-1.5 h-4 w-4" /> Tulis Confess
           </Link>
           <Link href="/feed" className="btn-ghost sm:w-auto">
             Lihat feed
@@ -64,8 +65,8 @@ export function CategoryStrip({
               href={`/feed?category=${c.id}`}
               className="card focus-ring flex items-center gap-3 p-4 transition-shadow hover:shadow-lift"
             >
-              <span aria-hidden className="text-xl">
-                {c.emoji}
+              <span aria-hidden className="text-primary">
+                <Icon name={c.icon} className="h-5 w-5" />
               </span>
               <span>
                 <span className="block text-sm font-semibold text-ink">{c.label}</span>

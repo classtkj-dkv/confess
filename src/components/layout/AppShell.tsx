@@ -11,6 +11,7 @@ import { SearchBar } from "./SearchBar";
 import { AnnouncementBanner } from "./AnnouncementBanner";
 import { useAuth } from "@/lib/auth/AuthProvider";
 import { useSettings } from "@/lib/firebase/useSettings";
+import { Icon } from "@/components/ui/Icon";
 export interface AppShellProps {
   children: React.ReactNode;
 }
@@ -31,7 +32,9 @@ export function AppShell({ children }: AppShellProps) {
     return (
       <main className="grid min-h-dvh place-items-center px-6 text-center">
         <div className="max-w-md space-y-4">
-          <div aria-hidden className="text-5xl">🛠️</div>
+          <div aria-hidden className="mx-auto grid h-16 w-16 place-items-center rounded-3xl bg-warning/15 text-warning">
+            <Icon name="wrench" className="h-8 w-8" />
+          </div>
           <h1 className="text-2xl font-extrabold text-ink">
             {settings.websiteName} sedang dalam perawatan
           </h1>
@@ -41,7 +44,8 @@ export function AppShell({ children }: AppShellProps) {
           </p>
           {settings.announcement.trim() && (
             <p className="rounded-xl border border-hairline bg-surface p-3 text-sm text-ink">
-              📣 {settings.announcement.trim()}
+              <Icon name="megaphone" className="mr-1.5 inline h-4 w-4 align-[-3px]" />
+              {settings.announcement.trim()}
             </p>
           )}
         </div>

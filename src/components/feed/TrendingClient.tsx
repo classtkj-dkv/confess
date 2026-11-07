@@ -7,6 +7,7 @@ import { CardSkeleton } from "@/components/ui/Skeletons";
 import { subscribeTrending } from "@/lib/firebase/feed";
 import { isFirebaseConfigured } from "@/lib/firebase/client";
 import type { Confession } from "@/types";
+import { Icon } from "@/components/ui/Icon";
 
 const PERIODS = [
   { days: 1, label: "Hari ini" },
@@ -43,7 +44,7 @@ export function TrendingClient() {
       <header className="flex items-end justify-between gap-3">
         <div>
           <h1 className="flex items-center gap-2 text-xl font-bold text-ink">
-            🔥 Trending
+            <Icon name="flame" className="h-5 w-5 text-primary" /> Trending
           </h1>
           <p className="mt-0.5 text-sm text-muted">
             Confession paling banyak disukai dalam periode terpilih.
@@ -72,7 +73,7 @@ export function TrendingClient() {
         <div className="space-y-4">{Array.from({ length: 3 }).map((_, i) => <CardSkeleton key={i} />)}</div>
       ) : status === "empty" ? (
         <EmptyState
-          icon="📉"
+          icon="trendingDown"
           title="Belum ada yang trending"
           description="Interaksi confession dalam periode ini masih sepi. Coba periode lain."
         />

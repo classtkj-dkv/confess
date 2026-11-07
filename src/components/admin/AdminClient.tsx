@@ -14,6 +14,7 @@ import { EmptyState, ErrorState } from "@/components/ui/States";
 import { StatSkeleton } from "@/components/ui/Skeletons";
 import { AuthAccountPanel } from "./AuthAccountPanel";
 import { formatDateTime, formatNumber, shortUid } from "@/utils/format";
+import { Icon, type IconName } from "@/components/ui/Icon";
 
 type Tab =
   | "overview"
@@ -27,17 +28,17 @@ type Tab =
   | "settings"
   | "audit";
 
-const TABS: readonly { id: Tab; label: string; icon: string }[] = [
-  { id: "overview", label: "Overview", icon: "📊" },
-  { id: "moderation", label: "Moderation", icon: "🚦" },
-  { id: "confessions", label: "Confessions", icon: "📝" },
-  { id: "comments", label: "Comments", icon: "💬" },
-  { id: "reports", label: "Reports", icon: "🚨" },
-  { id: "users", label: "Users", icon: "👥" },
-  { id: "categories", label: "Categories", icon: "🗂️" },
-  { id: "announcements", label: "Announcements", icon: "📣" },
-  { id: "settings", label: "Settings", icon: "⚙️" },
-  { id: "audit", label: "Audit Log", icon: "🧾" },
+const TABS: readonly { id: Tab; label: string; icon: IconName }[] = [
+  { id: "overview", label: "Overview", icon: "chart" },
+  { id: "moderation", label: "Moderation", icon: "shield" },
+  { id: "confessions", label: "Confessions", icon: "pencil" },
+  { id: "comments", label: "Comments", icon: "message" },
+  { id: "reports", label: "Reports", icon: "flag" },
+  { id: "users", label: "Users", icon: "users" },
+  { id: "categories", label: "Categories", icon: "grid" },
+  { id: "announcements", label: "Announcements", icon: "megaphone" },
+  { id: "settings", label: "Settings", icon: "sliders" },
+  { id: "audit", label: "Audit Log", icon: "file" },
 ];
 
 /** Tab yang boleh dilihat moderator; sisanya admin/owner. */
@@ -153,7 +154,7 @@ export function AdminClient() {
     return (
       <div className="space-y-6">
         <EmptyState
-          icon="🔐"
+          icon="lock"
           title="Akses admin diperlukan"
           description="Dashboard hanya untuk akun dengan role moderator/admin/owner yang diverifikasi server dari database. Pendaftaran baru selalu ber-role user biasa — role dinaikkan oleh owner (atau lewat Firebase Console)."
         />
@@ -193,7 +194,7 @@ export function AdminClient() {
                 : "border-hairline bg-surface text-muted hover:text-ink"
             }`}
           >
-            <span aria-hidden>{t.icon}</span> {t.label}
+            <Icon name={t.icon} className="mr-1 inline h-3.5 w-3.5 align-[-2px]" /> {t.label}
           </button>
         ))}
       </div>
@@ -405,7 +406,7 @@ function ConfessionRows({
       ) : loadError ? (
         <ErrorState description={loadError} />
       ) : rows.length === 0 ? (
-        <EmptyState icon="✅" title="Tidak ada confession" />
+        <EmptyState icon="check" title="Tidak ada confession" />
       ) : (
         rows.map((r) => {
           const cat = isCategoryId(r.category) ? getCategory(r.category) : getCategory("random");
@@ -413,7 +414,7 @@ function ConfessionRows({
             <article key={r.id} className="card p-4">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="badge">
-                  <span aria-hidden>{cat.emoji}</span> {cat.label}
+                  <Icon name={cat.icon} className="inline h-3.5 w-3.5 align-[-2px]" /> {cat.label}
                 </span>
                 <span
                   className={`badge ${
@@ -427,7 +428,9 @@ function ConfessionRows({
                   {r.status}
                 </span>
                 <span className="ml-auto text-[11px] text-muted">
-                  {formatDateTime(r.createdAt)} · ♥{r.likesCount} · 💬{r.commentsCount}
+                  {formatDateTime(r.createdAt)} ·{" "}
+                  <Icon name="heart" className="inline h-3 w-3 align-[-1px]" /> {r.likesCount} ·{" "}
+                  <Icon name="message" className="inline h-3 w-3 align-[-1px]" /> {r.commentsCount}
                 </span>
               </div>
               <p className="mt-3 whitespace-pre-line text-sm text-ink/90">{r.message}</p>
@@ -527,7 +530,7 @@ function CommentRows({
       {rows === null ? (
         <div className="space-y-3">{Array.from({ length: 3 }).map((_, i) => <StatSkeleton key={i} />)}</div>
       ) : rows.length === 0 ? (
-        <EmptyState icon="💬" title="Tidak ada komentar" />
+        <EmptyState icon="message" title="Tidak ada komentar" />
       ) : (
         rows.map((c) => (
           <div key={c.id} className="card p-4">
@@ -639,7 +642,7 @@ function ReportRows({
       {rows === null ? (
         <div className="space-y-3">{Array.from({ length: 3 }).map((_, i) => <StatSkeleton key={i} />)}</div>
       ) : rows.length === 0 ? (
-        <EmptyState icon="🕊️" title="Tidak ada laporan" />
+        <EmptyState icon="check" title="Tidak ada laporan" />
       ) : (
         rows.map((r) => (
           <div key={r.id} className="card p-4">
@@ -808,7 +811,7 @@ function UserRows({
       {filtered === null ? (
         <div className="space-y-3">{Array.from({ length: 3 }).map((_, i) => <StatSkeleton key={i} />)}</div>
       ) : filtered.length === 0 ? (
-        <EmptyState icon="👥" title="Tidak ada pengguna" />
+        <EmptyState icon="users" title="Tidak ada pengguna" />
       ) : (
         filtered.map((u) => (
           <div key={u.uid} className="card flex flex-wrap items-center gap-3 p-4">
@@ -879,7 +882,7 @@ function CategoriesView() {
         {CATEGORIES.map((c) => (
           <div key={c.id} className="card p-4">
             <div className="flex items-center gap-3">
-              <span aria-hidden className="text-xl">{c.emoji}</span>
+              <Icon name={c.icon} className="h-5 w-5 text-primary" />
               <div>
                 <p className="font-semibold text-ink">{c.label}</p>
                 <p className="font-mono text-[11px] text-muted">id: {c.id}</p>
@@ -1123,10 +1126,10 @@ function AuditRows() {
         <h2 className="mr-auto text-base font-bold text-ink">Log</h2>
         {(
           [
-            ["audit", "🧾 Tindakan staff"],
-            ["activity", "👤 Aktivitas pengguna"],
+            ["audit", "file", "Tindakan staff"],
+            ["activity", "user", "Aktivitas pengguna"],
           ] as const
-        ).map(([id, label]) => (
+        ).map(([id, icon, label]) => (
           <button
             key={id}
             type="button"
@@ -1138,6 +1141,7 @@ function AuditRows() {
                 : "border-hairline bg-surface text-muted"
             }`}
           >
+            <Icon name={icon} className="mr-1 inline h-3.5 w-3.5 align-[-2px]" />
             {label}
           </button>
         ))}
@@ -1145,7 +1149,7 @@ function AuditRows() {
       {rows === null ? (
         <StatSkeleton />
       ) : rows.length === 0 ? (
-        <EmptyState icon="🧾" title="Belum ada catatan" />
+        <EmptyState icon="file" title="Belum ada catatan" />
       ) : (
         rows.map((r) => (
           <div key={r.id} className="card flex flex-wrap items-center gap-3 p-4 text-xs">
@@ -1186,7 +1190,10 @@ function OwnerSetupPanel() {
 
   return (
     <div className="card space-y-3 p-5">
-      <h2 className="text-base font-bold text-ink">🔑 Aktifkan owner pertama</h2>
+      <h2 className="flex items-center gap-2 text-base font-bold text-ink">
+        <Icon name="key" className="h-4 w-4 text-primary" />
+        Aktifkan owner pertama
+      </h2>
       <p className="text-xs text-muted">
         Hanya bisa dipakai selama belum ada owner, dengan kunci setup dari
         environment variable ADMIN_SETUP_SECRET.

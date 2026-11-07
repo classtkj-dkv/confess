@@ -18,6 +18,7 @@ import {
 } from "@/lib/categories";
 import { isFirebaseConfigured } from "@/lib/firebase/client";
 import type { CategoryId, Confession, FeedFilter } from "@/types";
+import { Icon } from "@/components/ui/Icon";
 
 const FILTERS: readonly { id: FeedFilter; label: string }[] = [
   { id: "all", label: "Semua" },
@@ -150,7 +151,7 @@ export function FeedClient() {
           {searchParam
             ? `Hasil pencarian: "${searchParam}"`
             : category
-              ? `${getCategory(category).emoji} ${getCategory(category).label}`
+              ? getCategory(category).label
               : "Feed confession"}
         </h1>
         <p className="text-sm text-muted">
@@ -201,7 +202,7 @@ export function FeedClient() {
                 : "border-hairline bg-surface text-muted hover:text-ink"
             }`}
           >
-            🗂️ Semua kategori
+            <Icon name="grid" className="mr-1 inline h-3.5 w-3.5 align-[-2px]" /> Semua kategori
           </button>
           {CATEGORIES.map((c) => (
             <button
@@ -215,7 +216,7 @@ export function FeedClient() {
                   : "border-hairline bg-surface text-muted hover:text-ink"
               }`}
             >
-              <span aria-hidden>{c.emoji}</span> {c.label}
+              <Icon name={c.icon} className="inline h-3.5 w-3.5 align-[-2px]" /> {c.label}
             </button>
           ))}
         </div>
@@ -234,7 +235,7 @@ export function FeedClient() {
         />
       ) : shown.length === 0 ? (
         <EmptyState
-          icon="🍃"
+          icon="sprout"
           title="Tidak ada confession di sini"
           description="Belum ada cerita yang cocok dengan filter ini."
         />

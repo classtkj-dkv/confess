@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { REPORT_REASONS } from "@/lib/categories";
+import { Icon } from "@/components/ui/Icon";
 
 export const metadata: Metadata = {
   title: "Tentang",
@@ -21,7 +22,7 @@ export default function AboutPage() {
       </header>
 
       <section className="card p-6" aria-labelledby="tujuan">
-        <h2 id="tujuan" className="text-base font-bold text-ink">🎯 Tujuan</h2>
+        <h2 id="tujuan" className="flex items-center gap-2 text-base font-bold text-ink"><Icon name="target" className="h-4 w-4 text-primary" />Tujuan</h2>
         <ul className="mt-3 list-disc space-y-2 pl-5 text-sm text-muted">
           <li>
             Menjadi ruang berbagi cerita yang jujur di antara warga sekolah.
@@ -37,7 +38,7 @@ export default function AboutPage() {
       </section>
 
       <section className="card p-6" aria-labelledby="aturan">
-        <h2 id="aturan" className="text-base font-bold text-ink">📜 Aturan komunitas</h2>
+        <h2 id="aturan" className="flex items-center gap-2 text-base font-bold text-ink"><Icon name="book" className="h-4 w-4 text-primary" />Aturan komunitas</h2>
         <ul className="mt-3 list-disc space-y-2 pl-5 text-sm text-muted">
           <li>Confession melewati moderasi sebelum tampil publik.</li>
           <li>Maksimal 5 confession per akun per hari.</li>
@@ -49,7 +50,7 @@ export default function AboutPage() {
       </section>
 
       <section className="card p-6" aria-labelledby="lapor">
-        <h2 id="lapor" className="text-base font-bold text-ink">🚨 Hal yang bisa dilaporkan</h2>
+        <h2 id="lapor" className="flex items-center gap-2 text-base font-bold text-ink"><Icon name="flag" className="h-4 w-4 text-primary" />Hal yang bisa dilaporkan</h2>
         <p className="mt-2 text-sm text-muted">
           Setiap confession memiliki tombol laporan. Alasan yang tersedia:
         </p>
@@ -61,7 +62,7 @@ export default function AboutPage() {
       </section>
 
       <section className="card p-6" aria-labelledby="privasi">
-        <h2 id="privasi" className="text-base font-bold text-ink">🔒 Kebijakan privasi</h2>
+        <h2 id="privasi" className="flex items-center gap-2 text-base font-bold text-ink"><Icon name="lock" className="h-4 w-4 text-primary" />Kebijakan privasi</h2>
         <ul className="mt-3 list-disc space-y-2 pl-5 text-sm text-muted">
           <li>Tidak butuh email — akun anonim dibuat otomatis di belakang layar.</li>
           <li>

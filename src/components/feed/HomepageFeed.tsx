@@ -45,7 +45,7 @@ export function HomepageFeed() {
   if (status === "empty") {
     return (
       <EmptyState
-        icon="🌱"
+        icon="sprout"
         title="Belum ada confession"
         description="Jadilah yang pertama berbagi cerita hari ini."
         action={
@@ -60,7 +60,7 @@ export function HomepageFeed() {
   if (status === "unconfigured") {
     return (
       <EmptyState
-        icon="🛠️"
+        icon="wrench"
         title="Feed belum tersedia"
         description="Konfigurasi Firebase sebelum mencoba feed."
       />

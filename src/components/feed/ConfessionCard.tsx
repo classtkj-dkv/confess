@@ -11,6 +11,7 @@ import { getCategory } from "@/lib/categories";
 import { REPORT_REASONS } from "@/lib/categories";
 import type { Confession } from "@/types";
 import { formatNumber, formatRelativeTime } from "@/utils/format";
+import { Icon } from "@/components/ui/Icon";
 
 function AnonymousAvatar() {
   return (
@@ -242,7 +243,7 @@ export function ConfessionCard({
           </time>
         </div>
         <Link href={href} className="badge hover:text-ink" title={category.label}>
-          <span aria-hidden>{category.emoji}</span>
+          <Icon name={category.icon} className="inline h-3.5 w-3.5 align-[-2px]" />
           {category.label}
         </Link>
       </header>

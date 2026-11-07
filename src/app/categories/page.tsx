@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { CATEGORIES } from "@/lib/categories";
+import { Icon } from "@/components/ui/Icon";
 
 export const metadata: Metadata = {
   title: "Kategori",
@@ -23,8 +24,8 @@ export default function CategoriesPage() {
               href={`/feed?category=${c.id}`}
               className="card focus-ring flex items-start gap-4 p-5 transition-shadow hover:shadow-lift"
             >
-              <span aria-hidden className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-primary/15 text-xl">
-                {c.emoji}
+              <span aria-hidden className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-primary/15 text-xl text-primary">
+                <Icon name={c.icon} className="h-5 w-5" />
               </span>
               <span>
                 <span className="block font-semibold text-ink">{c.label}</span>
