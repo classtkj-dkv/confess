@@ -41,9 +41,19 @@ export async function api(
     body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
   });
 
-  const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+  // Baca sebagai teks dulu: bila server crash (bukan JSON) tampilkan status + cuplikan.
+  const text = await res.text().catch(() => "");
+  let data: Record<string, unknown> = {};
+  try {
+    data = text ? (JSON.parse(text) as Record<string, unknown>) : {};
+  } catch {
+    data = {};
+  }
   if (!res.ok) {
-    throw new ApiClientError(res.status, String(data?.error ?? "Terjadi kesalahan."));
+    const fallback = text
+      ? `Server error ${res.status}: ${text.replace(/\s+/g, " ").slice(0, 140)}`
+      : `Server error ${res.status} (respons kosong).`;
+    throw new ApiClientError(res.status, String(data?.error ?? fallback));
   }
   return data;
 }
