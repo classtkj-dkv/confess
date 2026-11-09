@@ -12,7 +12,7 @@ export async function GET(req: NextRequest): Promise<Response> {
     if (!/^\d{1,12}$/.test(id)) throw new ApiError(400, "Lagu tidak valid.");
     const track = await getTrack(id);
     if (!track) throw new ApiError(404, "Lagu tidak ditemukan.");
-    return Response.json({ preview: track.preview, link: track.link });
+    return Response.json({ preview: track.preview });
   } catch (err) {
     return errorResponse(err);
   }

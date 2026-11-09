@@ -13,6 +13,7 @@ import type { Confession } from "@/types";
 import { formatNumber, formatRelativeTime } from "@/utils/format";
 import { Icon } from "@/components/ui/Icon";
 import { SongCard } from "@/components/songs/SongCard";
+import { CardStudioButton } from "@/components/studio/CardStudio";
 
 function AnonymousAvatar({ name }: { name?: string }) {
   return (
@@ -267,6 +268,15 @@ export function ConfessionCard({
       <footer className="mt-4 flex items-center gap-1 border-t border-hairline pt-3">
         <LikeButton confession={confession} onDone={onLikeChange} />
         <CommentLink confession={confession} />
+        <CardStudioButton
+          data={{
+            fromName: confession.fromName,
+            toName: confession.toName,
+            message: confession.message,
+            song: confession.song,
+            songLyric: confession.songLyric,
+          }}
+        />
         <div className="ml-auto flex items-center">
           <ShareButton confession={confession} />
           <ReportButton confession={confession} />

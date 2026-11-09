@@ -72,7 +72,6 @@ function SongModal({
 }) {
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
   const [preview, setPreview] = useState("");
-  const [link, setLink] = useState("");
 
   // URL preview Deezer kedaluwarsa, jadi diambil segar setiap modal dibuka.
   useEffect(() => {
@@ -81,7 +80,6 @@ function SongModal({
       .then((d) => {
         if (cancelled) return;
         setPreview(String(d.preview ?? ""));
-        setLink(String(d.link ?? ""));
         setState("ready");
       })
       .catch(() => {
@@ -144,16 +142,6 @@ function SongModal({
         )}
 
         <div className="mt-5 flex gap-2">
-          {link && (
-            <a
-              href={link}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="btn-ghost flex-1 text-center"
-            >
-              Buka di Deezer
-            </a>
-          )}
           <button type="button" onClick={onClose} className="btn-primary flex-1">
             Tutup
           </button>

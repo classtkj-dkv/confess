@@ -21,7 +21,8 @@ const API = "https://api.deezer.com";
 function safeUrl(value: unknown): string {
   try {
     const u = new URL(String(value ?? ""));
-    return u.protocol === "https:" && u.hostname.endsWith("dzcdn.net") ? u.toString() : "";
+    const hostOk = u.hostname === "dzcdn.net" || u.hostname.endsWith(".dzcdn.net");
+    return u.protocol === "https:" && hostOk ? u.toString() : "";
   } catch {
     return "";
   }

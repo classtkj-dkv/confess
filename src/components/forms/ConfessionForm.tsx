@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { SongCard } from "@/components/songs/SongCard";
 import { SongPicker } from "@/components/songs/SongPicker";
+import { CardStudioButton } from "@/components/studio/CardStudio";
 import type { Song } from "@/types";
 import { useRouter } from "next/navigation";
 import { ApiClientError, api } from "@/lib/api";
@@ -152,6 +153,12 @@ export function ConfessionForm({ defaultCategory }: { defaultCategory?: string }
             </div>
           )}
         </article>
+        <CardStudioButton
+          className="btn-ghost w-full"
+          data={{ fromName, toName, message, song, songLyric: lyric }}
+        >
+          Atur kartu & unduh
+        </CardStudioButton>
         <div className="flex gap-2">
           <button
             type="button"
