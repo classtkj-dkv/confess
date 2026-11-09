@@ -49,7 +49,7 @@ export async function POST(req: NextRequest): Promise<Response> {
       throw new ApiError(400, "Body JSON tidak valid.");
     }
 
-    const { message, category, fromName, toName, songId, songLyric, kind } =
+    const { message, category, fromName, toName, songId, songLyric } =
       validateConfessionInput(raw);
 
     if (!isCategoryId(category)) {
@@ -71,11 +71,10 @@ export async function POST(req: NextRequest): Promise<Response> {
       throw new ApiError(400, `Confession maksimal ${maxLen.toLocaleString("id-ID")} karakter.`);
     }
 
-    // Lagu: hanya untuk songfess; data kanonik diambil ulang dari Deezer.
+    // Lagu (opsional): data kanonik diambil ulang dari Deezer, klien tidak dipercaya.
     let song: { id: string; title: string; artist: string; cover: string } | null = null;
-    if (kind === "songfess") {
+    if (songId) {
       if (!settings.allowSongs) throw new ApiError(403, "Fitur lagu sedang dinonaktifkan.");
-      if (!songId) throw new ApiError(400, "Songfess butuh lagu. Pilih lagunya dulu ya.");
       const track = await getTrack(songId);
       if (!track) throw new ApiError(400, "Lagu tidak ditemukan. Pilih lagu lain.");
       song = { id: track.id, title: track.title, artist: track.artist, cover: track.cover };
@@ -176,7 +175,6 @@ export async function POST(req: NextRequest): Promise<Response> {
       message: finalMessage,
       messageLower: finalMessage.toLowerCase(),
       category,
-      kind,
       ...(fromName ? { fromName } : {}),
       ...(toName ? { toName } : {}),
       ...(song ? { song, ...(songLyric ? { songLyric } : {}) } : {}),
@@ -199,7 +197,6 @@ export async function POST(req: NextRequest): Promise<Response> {
     await touchAdmin();
     await writeActivity(uid, "confession_submitted", id, {
       category,
-      kind,
       status,
       ai: moderation ? String(moderation.verdict) : "none",
     });

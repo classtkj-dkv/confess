@@ -244,7 +244,6 @@ export function ConfessionCard({
             {formatRelativeTime(confession.createdAt)}
           </time>
         </div>
-        {confession.kind === "songfess" && <span className="badge">♪ Songfess</span>}
         <Link href={href} className="badge hover:text-ink" title={category.label}>
           <Icon name={category.icon} className="inline h-3.5 w-3.5 align-[-2px]" />
           {category.label}

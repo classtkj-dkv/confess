@@ -4,8 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { SongCard } from "@/components/songs/SongCard";
 import { SongPicker } from "@/components/songs/SongPicker";
 import { CardStudioButton } from "@/components/studio/CardStudio";
-import type { ConfessionKind, Song } from "@/types";
-import { useSettings } from "@/lib/firebase/useSettings";
+import type { Song } from "@/types";
 import { useRouter } from "next/navigation";
 import { ApiClientError, api } from "@/lib/api";
 import { CATEGORIES } from "@/lib/categories";
@@ -31,10 +30,8 @@ export function ConfessionForm({ defaultCategory }: { defaultCategory?: string }
   const [toName, setToName] = useState("");
   const [song, setSong] = useState<Song | null>(null);
   const [lyric, setLyric] = useState("");
-  const [kind, setKind] = useState<ConfessionKind>("menfess");
   const [revision, setRevision] = useState("");
   const [sentStatus, setSentStatus] = useState<"PENDING" | "PUBLISHED">("PENDING");
-  const { settings } = useSettings();
 
   // Nama pengirim diingat di browser ini supaya tidak perlu diketik ulang.
   useEffect(() => {
@@ -46,11 +43,7 @@ export function ConfessionForm({ defaultCategory }: { defaultCategory?: string }
     }
   }, []);
 
-  const isSongfess = kind === "songfess" && settings.allowSongs;
-  const invalid = useMemo(
-    () => !/[\p{L}\p{N}]/u.test(message) || (isSongfess && !song),
-    [message, isSongfess, song]
-  );
+  const invalid = useMemo(() => !/[\p{L}\p{N}]/u.test(message), [message]);
   const categoryMeta = category ? getCategory(category) : null;
 
   async function submit() {
@@ -70,11 +63,10 @@ export function ConfessionForm({ defaultCategory }: { defaultCategory?: string }
         body: {
           message,
           category,
-          kind: isSongfess ? "songfess" : "menfess",
           fromName: fromName.trim(),
           toName: toName.trim(),
-          songId: isSongfess ? (song?.id ?? "") : "",
-          songLyric: isSongfess ? lyric.trim() : "",
+          songId: song?.id ?? "",
+          songLyric: song ? lyric.trim() : "",
         },
       });
       setSentStatus(res.status === "PUBLISHED" ? "PUBLISHED" : "PENDING");
@@ -162,7 +154,7 @@ export function ConfessionForm({ defaultCategory }: { defaultCategory?: string }
             </p>
           )}
           <p className="mt-3 whitespace-pre-line text-sm text-ink/90">{message}</p>
-          {isSongfess && song && (
+          {song && (
             <div className="mt-3">
               <SongCard song={song} lyric={lyric.trim()} />
             </div>
@@ -174,8 +166,8 @@ export function ConfessionForm({ defaultCategory }: { defaultCategory?: string }
             fromName,
             toName,
             message,
-            song: isSongfess ? song : null,
-            songLyric: isSongfess ? lyric : "",
+            song,
+            songLyric: song ? lyric : "",
           }}
         >
           Atur kartu & unduh
@@ -210,29 +202,6 @@ export function ConfessionForm({ defaultCategory }: { defaultCategory?: string }
         if (!invalid) setStep("preview");
       }}
     >
-      {settings.allowSongs && (
-        <div
-          role="tablist"
-          aria-label="Jenis kiriman"
-          className="grid grid-cols-2 gap-1 rounded-xl bg-surface p-1"
-        >
-          {(["menfess", "songfess"] as const).map((k) => (
-            <button
-              key={k}
-              type="button"
-              role="tab"
-              aria-selected={kind === k}
-              onClick={() => setKind(k)}
-              className={`focus-ring rounded-lg px-3 py-2 text-sm font-semibold capitalize transition-colors ${
-                kind === k ? "bg-primary text-white" : "text-muted hover:text-ink"
-              }`}
-            >
-              {k === "menfess" ? "Menfess" : "Songfess"}
-            </button>
-          ))}
-        </div>
-      )}
-
       {revision && (
         <div
           role="alert"
@@ -289,9 +258,7 @@ export function ConfessionForm({ defaultCategory }: { defaultCategory?: string }
         />
       </div>
 
-      {isSongfess && (
-        <SongPicker song={song} lyric={lyric} onSong={setSong} onLyric={setLyric} />
-      )}
+      <SongPicker song={song} lyric={lyric} onSong={setSong} onLyric={setLyric} />
 
       <div>
         <span id="cat-label" className="label">

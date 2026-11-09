@@ -5,8 +5,6 @@ export type ReactionType = "like";
 /** Role ladder: owner > admin > moderator > user. */
 export type UserRole = "user" | "moderator" | "admin" | "owner";
 
-export type ConfessionKind = "menfess" | "songfess";
-
 export interface Song {
   /** Id track Deezer. */
   id: string;
@@ -19,8 +17,6 @@ export interface Confession {
   id: string;
   message: string;
   category: CategoryId;
-  /** Jenis kiriman: menfess biasa atau songfess (wajib lagu). */
-  kind?: ConfessionKind;
   /** Nama pengirim (opsional). Kosong = Anonim. */
   fromName?: string;
   /** Untuk siapa pesan ini (opsional). */

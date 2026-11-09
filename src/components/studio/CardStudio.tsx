@@ -107,6 +107,14 @@ interface El {
   shadowColor: string;
   songStyle: SongStyle;
   fill: string;
+  /** Regang vertikal (tinggi). */
+  stretch: number;
+  /** Ukuran teks di dalam elemen lagu. */
+  songText: number;
+  /** Ukuran cover/kaset di dalam elemen lagu. */
+  songCover: number;
+  /** Ukuran teks label. */
+  labelSize: number;
 }
 
 /** Semua pengaturan tampilan = isi template (tanpa isi pesan). */
@@ -124,6 +132,8 @@ interface Design {
   font: string;
   color: string;
   title: string;
+  /** Urutan lapisan: yang terakhir paling atas. */
+  order: ElId[];
   els: Record<ElId, El>;
 }
 
@@ -158,8 +168,76 @@ interface Box {
   w: number;
   h: number;
   rot: number;
+  sy: number;
 }
 type Boxes = Partial<Record<ElId, Box>>;
+
+type Handle = "move" | "n" | "s" | "e" | "w" | "ne" | "nw" | "se" | "sw" | "rot";
+interface Pt {
+  x: number;
+  y: number;
+}
+interface Gesture {
+  id: ElId;
+  handle: Handle;
+  dx: number;
+  dy: number;
+  el0: El;
+  c0: Pt;
+  bw0: number;
+  h0: number;
+  sy0: number;
+}
+const HANDLE_DIR: Record<string, [number, number]> = {
+  n: [0, -1],
+  s: [0, 1],
+  e: [1, 0],
+  w: [-1, 0],
+  ne: [1, -1],
+  nw: [-1, -1],
+  se: [1, 1],
+  sw: [-1, 1],
+};
+
+function toLocal(p: Pt, c: Pt, rot: number): Pt {
+  const dx = p.x - c.x;
+  const dy = p.y - c.y;
+  const cs = Math.cos(-rot);
+  const sn = Math.sin(-rot);
+  return { x: dx * cs - dy * sn, y: dx * sn + dy * cs };
+}
+function toWorld(l: Pt, c: Pt, rot: number): Pt {
+  const cs = Math.cos(rot);
+  const sn = Math.sin(rot);
+  return { x: c.x + l.x * cs - l.y * sn, y: c.y + l.x * sn + l.y * cs };
+}
+function boxCenter(b: Box): Pt {
+  return { x: b.x + b.w / 2, y: b.y + b.h / 2 };
+}
+/** Titik pegangan (koordinat lokal terhadap pusat kotak). */
+function handleLocals(b: Box, unit: number): [Handle, Pt][] {
+  const a = b.w / 2;
+  const v = (b.h * b.sy) / 2;
+  return [
+    ["rot", { x: 0, y: -v - 34 * unit }],
+    ["nw", { x: -a, y: -v }],
+    ["ne", { x: a, y: -v }],
+    ["se", { x: a, y: v }],
+    ["sw", { x: -a, y: v }],
+    ["n", { x: 0, y: -v }],
+    ["s", { x: 0, y: v }],
+    ["e", { x: a, y: 0 }],
+    ["w", { x: -a, y: 0 }],
+  ];
+}
+function findHandle(b: Box, p: Pt, unit: number): Handle | null {
+  const c = boxCenter(b);
+  for (const [h, l] of handleLocals(b, unit)) {
+    const w = toWorld(l, c, b.rot);
+    if (Math.hypot(p.x - w.x, p.y - w.y) <= 20 * unit) return h;
+  }
+  return null;
+}
 
 /* ───────────── util ───────────── */
 
@@ -426,7 +504,7 @@ function paint(
   };
   const label = () => {
     if (!HAS_LABEL[id] || !el.showLabel || !el.label.trim()) return;
-    const lp = 56 * sz;
+    const lp = 56 * sz * el.labelSize;
     ctx.font = fnt(lp);
     y += lp * 1.1;
     ctx.fillStyle = el.labelColor || color;
@@ -461,8 +539,9 @@ function paint(
     label();
     y += 10 * sz;
     const style = el.songStyle;
-    const tp = 54 * sz;
-    const ap = 42 * sz;
+    const tp = 54 * sz * el.songText;
+    const ap = 42 * sz * el.songText;
+    const sc = sz * el.songCover;
     const cardFill = el.fill || "#ffffff";
     const onCard = el.color || (isLight(cardFill) ? "#111111" : "#ffffff");
 
@@ -498,13 +577,13 @@ function paint(
       y = drawLay(T1, ax, y);
       if (song.artist) y = drawLay(A1, ax, y + 4 * sz);
     } else if (style === "cover") {
-      const cs = Math.min(300 * sz, bw * 0.85);
+      const cs = Math.min(300 * sc, bw * 0.95);
       coverAt(place(cs), y, cs, cs * 0.02);
       y += cs + 22 * sz;
       y = drawLay(lay(song.title, tp, bw, true), ax, y);
       if (song.artist) y = drawLay(lay(song.artist, ap, bw, true), ax, y + 4 * sz);
     } else if (style === "card") {
-      const cs = Math.min(240 * sz, bw * 0.62);
+      const cs = Math.min(240 * sc, bw * 0.85);
       const pad = cs * 0.07;
       const cw = cs + pad * 2;
       const T1 = lay(song.title, tp * 0.9, cs, true);
@@ -525,7 +604,7 @@ function paint(
       }
       y += ch;
     } else if (style === "pill") {
-      const ps = 110 * sz;
+      const ps = 110 * sc;
       const pad = ps * 0.11;
       const maxText = Math.max(120 * sz, Math.min(bw, 760 * sz) - ps - pad * 3);
       const T1 = lay(song.title, tp * 0.8, maxText, true);
@@ -552,7 +631,7 @@ function paint(
       y += ch;
     } else {
       // kaset
-      const cw = Math.min(520 * sz, bw * 0.95);
+      const cw = Math.min(520 * sc, bw * 0.95);
       const ch = cw * 0.62;
       const cx = place(cw);
       if (!dry) {
@@ -649,11 +728,12 @@ function drawEl(
   if (!dry) {
     ctx.save();
     ctx.globalAlpha = el.opacity;
-    if (rot) {
+    if (rot || el.stretch !== 1) {
       const cx = m.x + m.w / 2;
       const cy = m.y + m.h / 2;
       ctx.translate(cx, cy);
       ctx.rotate(rot);
+      if (el.stretch !== 1) ctx.scale(1, el.stretch);
       ctx.translate(-cx, -cy);
     }
     if (el.shadowBlur > 0) {
@@ -664,7 +744,7 @@ function drawEl(
     paint(ctx, id, d, c, cover, accent, W, H, false, yOverride, k);
     ctx.restore();
   }
-  return { ...m, rot };
+  return { ...m, rot, sy: el.stretch };
 }
 
 function renderCard(
@@ -674,7 +754,7 @@ function renderCard(
   bg: HTMLImageElement | null,
   cover: HTMLImageElement | null,
   accent: string,
-  guides: { selected: ElId | null; snapX: boolean } | null
+  guides: { selected: ElId | null; snapX: boolean; snapY: boolean; unit: number } | null
 ): Boxes {
   const { w: W, h: H } = SIZES[d.ratio];
   canvas.width = W;
@@ -683,28 +763,57 @@ function renderCard(
   if (!ctx) return {};
   drawBackground(ctx, W, H, d, bg);
   const boxes: Boxes = {};
-  for (const id of EL_IDS) {
+  for (const id of d.order) {
     if (!d.els[id].visible) continue;
     const b = drawEl(ctx, id, d, c, cover, accent, W, H, false);
     if (b) boxes[id] = b;
   }
   if (guides) {
+    const u = guides.unit;
     ctx.save();
-    ctx.lineWidth = 4;
-    ctx.setLineDash([16, 10]);
+    ctx.lineWidth = 2 * u;
+    ctx.setLineDash([8 * u, 6 * u]);
+    ctx.strokeStyle = "rgba(255,0,110,0.9)";
     if (guides.snapX) {
-      ctx.strokeStyle = "rgba(255,0,110,0.9)";
       ctx.beginPath();
       ctx.moveTo(W / 2, 0);
       ctx.lineTo(W / 2, H);
       ctx.stroke();
     }
+    if (guides.snapY) {
+      ctx.beginPath();
+      ctx.moveTo(0, H / 2);
+      ctx.lineTo(W, H / 2);
+      ctx.stroke();
+    }
     const sel = guides.selected ? boxes[guides.selected] : undefined;
     if (sel) {
-      ctx.strokeStyle = "#2f80ff";
-      ctx.translate(sel.x + sel.w / 2, sel.y + sel.h / 2);
+      const c0 = boxCenter(sel);
+      ctx.translate(c0.x, c0.y);
       ctx.rotate(sel.rot);
-      ctx.strokeRect(-sel.w / 2 - 12, -sel.h / 2 - 12, sel.w + 24, sel.h + 24);
+      const a = sel.w / 2;
+      const v = (sel.h * sel.sy) / 2;
+      ctx.strokeStyle = "#2f80ff";
+      ctx.strokeRect(-a, -v, sel.w, v * 2);
+      ctx.setLineDash([]);
+      ctx.beginPath();
+      ctx.moveTo(0, -v);
+      ctx.lineTo(0, -v - 34 * u);
+      ctx.stroke();
+      for (const [h, l] of handleLocals(sel, u)) {
+        ctx.beginPath();
+        if (h === "n" || h === "s" || h === "e" || h === "w") {
+          // pegangan sisi: kapsul kecil
+          ctx.arc(l.x, l.y, 7 * u, 0, Math.PI * 2);
+        } else {
+          ctx.arc(l.x, l.y, (h === "rot" ? 9 : 8) * u, 0, Math.PI * 2);
+        }
+        ctx.fillStyle = h === "rot" ? "#2f80ff" : "#ffffff";
+        ctx.fill();
+        ctx.lineWidth = 2.5 * u;
+        ctx.strokeStyle = "#2f80ff";
+        ctx.stroke();
+      }
     }
     ctx.restore();
   }
@@ -719,7 +828,7 @@ function autoLayout(d: Design, c: Content): Design {
   const norm: Design = {
     ...d,
     els: Object.fromEntries(
-      EL_IDS.map((id) => [id, { ...d.els[id], x: 0.09, w: 0.82, rotation: 0 }])
+      EL_IDS.map((id) => [id, { ...d.els[id], x: 0.09, w: 0.82, rotation: 0, stretch: 1 }])
     ) as Record<ElId, El>,
   };
   const gap = 56;
@@ -781,6 +890,10 @@ function baseEl(): El {
     shadowColor: "#000000",
     songStyle: "card",
     fill: "",
+    stretch: 1,
+    songText: 1,
+    songCover: 1,
+    labelSize: 1,
   };
 }
 
@@ -800,6 +913,7 @@ function defaultDesign(content: Content, hasLyric: boolean): Design {
     font: "dancing",
     color: PALETTES[0].text,
     title: content.song ? "Menfess Songs" : "Menfess",
+    order: [...EL_IDS],
     els: {
       title: { ...base, showLabel: false },
       to: { ...base, label: "To:" },
@@ -852,6 +966,10 @@ function sanitizeEl(raw: unknown, def: El): El {
     shadowColor: colReq(r.shadowColor, def.shadowColor),
     songStyle: pick(r.songStyle, ["cover", "pill", "card", "cassette", "text"] as const, def.songStyle),
     fill: colAuto(r.fill, def.fill),
+    stretch: num(r.stretch, 0.2, 4, def.stretch),
+    songText: num(r.songText, 0.2, 2, def.songText),
+    songCover: num(r.songCover, 0.2, 2, def.songCover),
+    labelSize: num(r.labelSize, 0.3, 2, def.labelSize),
   };
 }
 
@@ -872,6 +990,12 @@ function sanitizeDesign(raw: unknown, fb: Design): Design {
     font: pick(r.font, FONT_IDS, fb.font),
     color: colReq(r.color, fb.color),
     title: text(r.title, 40, fb.title),
+    order:
+      Array.isArray(r.order) &&
+      r.order.length === EL_IDS.length &&
+      EL_IDS.every((id) => (r.order as unknown[]).includes(id))
+        ? (r.order as ElId[])
+        : fb.order,
     els: Object.fromEntries(EL_IDS.map((id) => [id, sanitizeEl(els[id], fb.els[id])])) as Record<ElId, El>,
   };
 }
@@ -1114,14 +1238,19 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
   const [content, setContent] = useState<Content>(initialContent);
   const [design, setDesign] = useState<Design>(() => defaultDesign(initialContent, Boolean(data.songLyric)));
   const [selected, setSelected] = useState<ElId | null>("message");
-  const [snapX, setSnapX] = useState(false);
+  const [snap, setSnap] = useState({ x: false, y: false });
   const [fontTick, setFontTick] = useState(0);
+  const [zoom, setZoom] = useState(1);
+  const [histTick, setHistTick] = useState(0);
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const boxesRef = useRef<Boxes>({});
   const designRef = useRef(design);
   designRef.current = design;
-  const dragRef = useRef<{ id: ElId; dx: number; dy: number } | null>(null);
+  const gestureRef = useRef<Gesture | null>(null);
+  const panRef = useRef<{ x: number; y: number; sl: number; st: number } | null>(null);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const hist = useRef({ past: [] as string[], future: [] as string[], last: "", skip: false });
   const pointers = useRef(new Map<number, { x: number; y: number }>());
   const pinchRef = useRef<{ id: ElId; d0: number; a0: number; size0: number; rot0: number } | null>(null);
   const touched = useRef(false);
@@ -1154,7 +1283,11 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
     ensureFontLinks();
     const bump = () => setFontTick((n) => n + 1);
     document.fonts?.addEventListener("loadingdone", bump);
-    return () => document.fonts?.removeEventListener("loadingdone", bump);
+    window.addEventListener("resize", bump);
+    return () => {
+      document.fonts?.removeEventListener("loadingdone", bump);
+      window.removeEventListener("resize", bump);
+    };
   }, []);
 
   const usedFonts = [design.font, ...EL_IDS.map((id) => design.els[id].font)].filter(Boolean).join("|");
@@ -1200,6 +1333,16 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
+      const tag = (e.target as HTMLElement | null)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
+        e.preventDefault();
+        if (e.shiftKey) redo();
+        else undo();
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "y") {
+        e.preventDefault();
+        redo();
+      }
     };
     window.addEventListener("keydown", onKey);
     const prev = document.body.style.overflow;
@@ -1215,8 +1358,78 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    boxesRef.current = renderCard(canvas, design, content, bgImg, cover, accent, { selected, snapX });
-  }, [design, content, bgImg, cover, accent, selected, snapX, fontTick]);
+    const rect = canvas.getBoundingClientRect();
+    const unit = rect.width > 0 ? SIZES[design.ratio].w / rect.width : 3;
+    boxesRef.current = renderCard(canvas, design, content, bgImg, cover, accent, {
+      selected,
+      snapX: snap.x,
+      snapY: snap.y,
+      unit,
+    });
+  }, [design, content, bgImg, cover, accent, selected, snap, zoom, fontTick]);
+
+  /* riwayat undo/redo: perubahan beruntun digabung (jeda 350 ms) */
+  useEffect(() => {
+    const h = hist.current;
+    const snapshot = JSON.stringify(design);
+    if (!h.last) {
+      h.last = snapshot;
+      return;
+    }
+    if (h.skip) {
+      h.skip = false;
+      h.last = snapshot;
+      return;
+    }
+    if (snapshot === h.last) return;
+    const t = setTimeout(() => {
+      h.past.push(h.last);
+      if (h.past.length > 60) h.past.shift();
+      h.future = [];
+      h.last = snapshot;
+      setHistTick((n) => n + 1);
+    }, 350);
+    return () => clearTimeout(t);
+  }, [design]);
+
+  function undo() {
+    const h = hist.current;
+    const cur = JSON.stringify(designRef.current);
+    let target: string | undefined;
+    if (cur !== h.last) {
+      target = h.last; // perubahan terakhir belum tercatat: kembalikan ke catatan terakhir
+    } else {
+      target = h.past.pop();
+    }
+    if (target === undefined) return;
+    h.future.push(cur);
+    h.skip = true;
+    h.last = target;
+    setDesign(JSON.parse(target) as Design);
+    setHistTick((n) => n + 1);
+  }
+
+  function redo() {
+    const h = hist.current;
+    const target = h.future.pop();
+    if (target === undefined) return;
+    h.past.push(h.last);
+    h.skip = true;
+    h.last = target;
+    setDesign(JSON.parse(target) as Design);
+    setHistTick((n) => n + 1);
+  }
+
+  function moveLayer(id: ElId, dir: 1 | -1) {
+    setDesign((p) => {
+      const o = [...p.order];
+      const i = o.indexOf(id);
+      const j = i + dir;
+      if (i < 0 || j < 0 || j >= o.length) return p;
+      [o[i], o[j]] = [o[j], o[i]];
+      return { ...p, order: o };
+    });
+  }
 
   /* template tersimpan: muat daftar, lalu pakai template terakhir */
   useEffect(() => {
@@ -1327,7 +1540,7 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
         name: existing?.name ?? (tplName.trim().slice(0, 30) || `Template ${templates.length + 1}`),
         updatedAt: Date.now(),
         design: d,
-        bg: d.bgMode === "image" ? bgBlob : null,
+        bg: bgBlob,
         thumb: makeThumb(d, bgImg),
       };
       await dbRun("readwrite", (s) => s.put(t));
@@ -1480,8 +1693,8 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
     }
   }
 
-  /* ── geser, putar, dan cubit elemen di kanvas ── */
-  function toCanvasPoint(e: React.PointerEvent<HTMLCanvasElement>) {
+  /* ── transformasi elemen: geser, 8 titik ubah ukuran, putar, cubit ── */
+  function toCanvasPoint(e: React.PointerEvent<HTMLCanvasElement>): Pt {
     const canvas = e.currentTarget;
     const rect = canvas.getBoundingClientRect();
     return {
@@ -1490,20 +1703,38 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
     };
   }
 
-  function inBox(b: Box, p: { x: number; y: number }) {
-    const dx = p.x - (b.x + b.w / 2);
-    const dy = p.y - (b.y + b.h / 2);
-    const cos = Math.cos(-b.rot);
-    const sin = Math.sin(-b.rot);
-    const lx = dx * cos - dy * sin;
-    const ly = dx * sin + dy * cos;
-    return Math.abs(lx) <= b.w / 2 + 20 && Math.abs(ly) <= b.h / 2 + 20;
+  /** Piksel kanvas per piksel layar. */
+  function pointerUnit(canvas: HTMLCanvasElement) {
+    const r = canvas.getBoundingClientRect();
+    return r.width > 0 ? canvas.width / r.width : 3;
+  }
+
+  function inBox(b: Box, p: Pt) {
+    const l = toLocal(p, boxCenter(b), b.rot);
+    return Math.abs(l.x) <= b.w / 2 + 20 && Math.abs(l.y) <= (b.h * b.sy) / 2 + 20;
+  }
+
+  function startGesture(id: ElId, handle: Handle, p: Pt, b: Box) {
+    gestureRef.current = {
+      id,
+      handle,
+      dx: p.x - b.x,
+      dy: p.y - b.y,
+      el0: { ...designRef.current.els[id] },
+      c0: boxCenter(b),
+      bw0: b.w,
+      h0: b.h,
+      sy0: b.sy,
+    };
+    setSelected(id);
   }
 
   function onPointerDown(e: React.PointerEvent<HTMLCanvasElement>) {
+    const canvas = e.currentTarget;
     const p = toCanvasPoint(e);
     pointers.current.set(e.pointerId, p);
-    e.currentTarget.setPointerCapture(e.pointerId);
+    canvas.setPointerCapture(e.pointerId);
+
     if (pointers.current.size === 2) {
       const target = selected;
       if (target) {
@@ -1516,27 +1747,45 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
           size0: el.size,
           rot0: el.rotation,
         };
-        dragRef.current = null;
+        gestureRef.current = null;
+        panRef.current = null;
       }
       return;
     }
-    const hit = [...EL_IDS].reverse().find((id) => {
+
+    const unit = pointerUnit(canvas);
+    const d = designRef.current;
+    // 1) pegangan elemen yang sedang dipilih
+    if (selected && d.els[selected].visible) {
+      const sb = boxesRef.current[selected];
+      if (sb) {
+        const h = findHandle(sb, p, unit);
+        if (h) {
+          startGesture(selected, h, p, sb);
+          return;
+        }
+      }
+    }
+    // 2) badan elemen (lapisan teratas dulu)
+    const hit = [...d.order].reverse().find((id) => {
       const b = boxesRef.current[id];
       return b && inBox(b, p);
     });
-    if (!hit) {
-      setSelected(null);
+    if (hit) {
+      startGesture(hit, "move", p, boxesRef.current[hit] as Box);
       return;
     }
-    const b = boxesRef.current[hit] as Box;
-    setSelected(hit);
-    dragRef.current = { id: hit, dx: p.x - b.x, dy: p.y - b.y };
+    // 3) area kosong: batalkan pilihan; bila di-zoom, geser tampilan
+    setSelected(null);
+    const sc = scrollRef.current;
+    if (sc && zoom > 1) panRef.current = { x: e.clientX, y: e.clientY, sl: sc.scrollLeft, st: sc.scrollTop };
   }
 
   function onPointerMove(e: React.PointerEvent<HTMLCanvasElement>) {
     if (!pointers.current.has(e.pointerId)) return;
     const p = toCanvasPoint(e);
     pointers.current.set(e.pointerId, p);
+
     const pr = pinchRef.current;
     if (pr && pointers.current.size >= 2) {
       const [a, b] = Array.from(pointers.current.values());
@@ -1548,19 +1797,80 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
       setEl(pr.id, { size: clamp((pr.size0 * dist) / pr.d0, 0.3, 3), rotation: Math.round(rot) });
       return;
     }
-    const dr = dragRef.current;
-    if (!dr) return;
+
+    const pan = panRef.current;
+    if (pan && scrollRef.current) {
+      scrollRef.current.scrollLeft = pan.sl - (e.clientX - pan.x);
+      scrollRef.current.scrollTop = pan.st - (e.clientY - pan.y);
+      return;
+    }
+
+    const g = gestureRef.current;
+    if (!g) return;
     const { w: W, h: H } = SIZES[designRef.current.ratio];
-    const el = designRef.current.els[dr.id];
-    let nx = (p.x - dr.dx) / W;
-    const ny = (p.y - dr.dy) / H;
-    const snapped = Math.abs(nx + el.w / 2 - 0.5) < 0.015;
-    if (snapped) nx = 0.5 - el.w / 2;
-    setSnapX(snapped);
+    const { el0, c0, bw0, h0, sy0 } = g;
+    const rot = (el0.rotation * Math.PI) / 180;
     touched.current = true;
-    setEl(dr.id, {
-      x: clamp(nx, -el.w / 2, 1 - el.w / 2),
-      y: clamp(ny, -0.02, 0.98),
+
+    if (g.handle === "move") {
+      let nx = (p.x - g.dx) / W;
+      let ny = (p.y - g.dy) / H;
+      const sx = Math.abs(nx + el0.w / 2 - 0.5) < 0.012;
+      const sy = Math.abs(ny + h0 / 2 / H - 0.5) < 0.012;
+      if (sx) nx = 0.5 - el0.w / 2;
+      if (sy) ny = 0.5 - h0 / 2 / H;
+      setSnap({ x: sx, y: sy });
+      setEl(g.id, { x: clamp(nx, -el0.w / 2, 1 - el0.w / 2), y: clamp(ny, -0.3, 1) });
+      return;
+    }
+
+    if (g.handle === "rot") {
+      let deg = normDeg((Math.atan2(p.y - c0.y, p.x - c0.x) * 180) / Math.PI + 90);
+      for (const t of [0, 45, 90, 135, 180, -45, -90, -135, -180]) {
+        if (Math.abs(deg - t) < 3) deg = t;
+      }
+      setEl(g.id, { rotation: Math.round(deg) });
+      return;
+    }
+
+    const lp = toLocal(p, c0, rot);
+    const a0 = bw0 / 2;
+    const v0 = (h0 * sy0) / 2;
+    const dir = HANDLE_DIR[g.handle];
+
+    if (g.handle === "e" || g.handle === "w") {
+      // lebar kotak: sisi seberang tetap
+      const sgn = dir[0];
+      const nbw = clamp(sgn * lp.x + a0, 0.1 * W, 1.2 * W);
+      const nc = toWorld({ x: (sgn * (nbw - bw0)) / 2, y: 0 }, c0, rot);
+      setEl(g.id, { w: nbw / W, x: (nc.x - nbw / 2) / W, y: (nc.y - h0 / 2) / H });
+      return;
+    }
+
+    if (g.handle === "n" || g.handle === "s") {
+      // tinggi: regang vertikal, sisi seberang tetap
+      const sgn = dir[1];
+      const nsy = clamp((sgn * lp.y + v0) / h0, 0.2, 4);
+      const nc = toWorld({ x: 0, y: (sgn * (nsy * h0 - h0 * sy0)) / 2 }, c0, rot);
+      setEl(g.id, { stretch: nsy, x: (nc.x - bw0 / 2) / W, y: (nc.y - h0 / 2) / H });
+      return;
+    }
+
+    // sudut: skala seragam dari sudut yang berseberangan
+    const hv = { x: dir[0] * a0, y: dir[1] * v0 };
+    const an = { x: -hv.x, y: -hv.y };
+    const vx = hv.x - an.x;
+    const vy = hv.y - an.y;
+    let f = ((lp.x - an.x) * vx + (lp.y - an.y) * vy) / (vx * vx + vy * vy);
+    f = clamp(f, 0.1, 6);
+    f = clamp(el0.size * f, 0.3, 3) / el0.size;
+    f = clamp(el0.w * f, 0.1, 1.2) / el0.w;
+    const nc = toWorld({ x: an.x * (1 - f), y: an.y * (1 - f) }, c0, rot);
+    setEl(g.id, {
+      size: el0.size * f,
+      w: el0.w * f,
+      x: (nc.x - (bw0 * f) / 2) / W,
+      y: (nc.y - (h0 * f) / 2) / H,
     });
   }
 
@@ -1568,8 +1878,9 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
     pointers.current.delete(e.pointerId);
     if (pointers.current.size < 2) pinchRef.current = null;
     if (pointers.current.size === 0) {
-      dragRef.current = null;
-      setSnapX(false);
+      gestureRef.current = null;
+      panRef.current = null;
+      setSnap({ x: false, y: false });
     }
   }
 
@@ -1595,7 +1906,9 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
       e.preventDefault();
       setDrag(true);
     },
-    onDragLeave: () => setDrag(false),
+    onDragLeave: (e: React.DragEvent) => {
+      if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDrag(false);
+    },
     onDrop: (e: React.DragEvent) => {
       e.preventDefault();
       setDrag(false);
@@ -1632,7 +1945,68 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
         <div className="grid gap-5 md:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
           {/* ── pratinjau ── */}
           <div className="space-y-3 self-start md:sticky md:top-4" {...dropHandlers}>
-            <div className={`rounded-xl p-1 ${drag ? "ring-2 ring-primary" : ""}`}>
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={undo}
+                disabled={!(hist.current.past.length > 0 || JSON.stringify(design) !== hist.current.last)}
+                aria-label="Urungkan"
+                title="Urungkan (Ctrl+Z)"
+                className="btn-ghost px-2.5 py-1 text-sm disabled:opacity-40"
+                data-tick={histTick}
+              >
+                ↶
+              </button>
+              <button
+                type="button"
+                onClick={redo}
+                disabled={hist.current.future.length === 0}
+                aria-label="Ulangi"
+                title="Ulangi (Ctrl+Shift+Z)"
+                className="btn-ghost px-2.5 py-1 text-sm disabled:opacity-40"
+              >
+                ↷
+              </button>
+              <span className="mx-1 h-5 w-px bg-hairline" aria-hidden />
+              <button
+                type="button"
+                onClick={() => setZoom((z) => clamp(Math.round((z - 0.25) * 4) / 4, 1, 4))}
+                aria-label="Perkecil tampilan"
+                className="btn-ghost px-2.5 py-1 text-sm"
+              >
+                −
+              </button>
+              <input
+                type="range"
+                min={1}
+                max={4}
+                step={0.25}
+                value={zoom}
+                onChange={(e) => setZoom(Number(e.target.value))}
+                aria-label="Zoom tampilan"
+                className="min-w-0 flex-1"
+              />
+              <button
+                type="button"
+                onClick={() => setZoom((z) => clamp(Math.round((z + 0.25) * 4) / 4, 1, 4))}
+                aria-label="Perbesar tampilan"
+                className="btn-ghost px-2.5 py-1 text-sm"
+              >
+                +
+              </button>
+              <button type="button" onClick={() => setZoom(1)} className="btn-ghost px-2 py-1 text-xs">
+                {Math.round(zoom * 100)}%
+              </button>
+            </div>
+            <div
+              ref={scrollRef}
+              className={`relative max-h-[64vh] overflow-auto rounded-xl p-1 ${drag ? "ring-2 ring-primary" : ""}`}
+            >
+              {drag && (
+                <div className="pointer-events-none absolute inset-0 z-10 grid place-items-center rounded-xl bg-primary/20 text-sm font-semibold text-ink">
+                  Lepas foto di sini
+                </div>
+              )}
               <canvas
                 ref={canvasRef}
                 tabIndex={0}
@@ -1644,17 +2018,17 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
                 onKeyDown={onKeyDown}
                 className="mx-auto block rounded-lg shadow-lift outline-none focus-visible:ring-2 focus-visible:ring-primary"
                 style={{
-                  width: "auto",
+                  width: `calc(min(100%, ${((62 * SIZES[design.ratio].w) / SIZES[design.ratio].h).toFixed(3)}vh) * ${zoom})`,
                   height: "auto",
-                  maxWidth: "100%",
-                  maxHeight: "62vh",
+                  maxWidth: "none",
                   touchAction: "none",
                   cursor: "grab",
                 }}
               />
             </div>
             <p className="text-center text-[11px] text-muted">
-              Geser teks untuk memindahkan. Cubit dengan dua jari untuk memperbesar dan memutar elemen yang dipilih.
+              Pilih elemen, lalu tarik titik di sudut dan sisi untuk mengubah ukuran, titik atas untuk memutar. Cubit
+              dua jari untuk skala dan putar cepat. Zoom lalu geser area kosong untuk menggeser tampilan.
             </p>
             <div className="flex gap-2">
               <button type="button" onClick={() => void download()} className="btn-primary flex-1">
@@ -1779,6 +2153,50 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
                   { id: "image", label: "Foto" },
                 ]}
               />
+              <div className="space-y-2">
+                <label
+                  {...dropHandlers}
+                  className={`flex cursor-pointer items-center gap-3 rounded-xl border-2 border-dashed p-3 text-xs text-muted ${
+                    drag ? "border-primary bg-primary/10" : "border-hairline"
+                  }`}
+                >
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="sr-only"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) void loadFile(f);
+                      e.target.value = "";
+                    }}
+                  />
+                  {bgImg && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={bgImg.src}
+                      alt="Foto latar"
+                      className="h-14 w-10 shrink-0 rounded-md border border-hairline object-cover"
+                    />
+                  )}
+                  <span className="flex-1 text-center">
+                    {bgImg
+                      ? "Foto tersimpan di kartu ini dan ikut tersimpan di template. Seret atau ketuk untuk ganti."
+                      : "Seret foto ke sini atau ketuk untuk pilih. Foto ikut tersimpan di template."}
+                  </span>
+                </label>
+                {bgImg && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void setBackground(null);
+                      setD({ bgMode: "gen" });
+                    }}
+                    className="text-xs font-semibold text-primary"
+                  >
+                    Hapus foto
+                  </button>
+                )}
+              </div>
               {design.bgMode === "gen" && (
                 <div className="flex flex-wrap items-center gap-2">
                   {PALETTES.map((p, i) => (
@@ -1821,23 +2239,6 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
               )}
               {design.bgMode === "image" && (
                 <div className="space-y-3">
-                  <label
-                    className={`flex cursor-pointer items-center justify-center rounded-xl border-2 border-dashed p-4 text-center text-xs text-muted ${
-                      drag ? "border-primary bg-primary/10" : "border-hairline"
-                    }`}
-                  >
-                    <input
-                      type="file"
-                      accept="image/*"
-                      className="sr-only"
-                      onChange={(e) => {
-                        const f = e.target.files?.[0];
-                        if (f) void loadFile(f);
-                        e.target.value = "";
-                      }}
-                    />
-                    {bgImg ? "Ganti foto (seret atau ketuk)" : "Seret foto ke sini atau ketuk untuk pilih"}
-                  </label>
                   <Range label="Kekuatan penutup" value={design.overlay} min={0} max={0.9} step={0.05} onChange={(v) => setD({ overlay: v })} />
                   <ColorField label="Warna penutup" value={design.overlayColor} fallback="#000000" auto onChange={(v) => setD({ overlayColor: v })} />
                 </div>
@@ -1908,34 +2309,53 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
                 </button>
               </div>
               <ul className="space-y-1.5">
-                {EL_IDS.filter(available).map((id) => (
-                  <li
-                    key={id}
-                    className={`flex items-center gap-2 rounded-lg border px-2.5 py-1.5 ${
-                      selected === id ? "border-primary bg-primary/10" : "border-hairline"
-                    }`}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={design.els[id].visible}
-                      aria-label={`Tampilkan ${EL_NAMES[id]}`}
-                      onChange={(e) => {
-                        const next = {
-                          ...design,
-                          els: { ...design.els, [id]: { ...design.els[id], visible: e.target.checked } },
-                        };
-                        setDesign(relayoutIfFresh(next));
-                      }}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setSelected(id)}
-                      className="focus-ring flex-1 rounded text-left text-sm font-semibold text-ink"
+                {[...design.order]
+                  .reverse()
+                  .filter(available)
+                  .map((id) => (
+                    <li
+                      key={id}
+                      className={`flex items-center gap-2 rounded-lg border px-2.5 py-1.5 ${
+                        selected === id ? "border-primary bg-primary/10" : "border-hairline"
+                      }`}
                     >
-                      {EL_NAMES[id]}
-                    </button>
-                  </li>
-                ))}
+                      <input
+                        type="checkbox"
+                        checked={design.els[id].visible}
+                        aria-label={`Tampilkan ${EL_NAMES[id]}`}
+                        onChange={(e) => {
+                          const next = {
+                            ...design,
+                            els: { ...design.els, [id]: { ...design.els[id], visible: e.target.checked } },
+                          };
+                          setDesign(relayoutIfFresh(next));
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setSelected(id)}
+                        className="focus-ring flex-1 rounded text-left text-sm font-semibold text-ink"
+                      >
+                        {EL_NAMES[id]}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => moveLayer(id, 1)}
+                        aria-label={`Naikkan lapisan ${EL_NAMES[id]}`}
+                        className="focus-ring rounded px-1.5 text-xs text-muted hover:text-ink"
+                      >
+                        ▲
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => moveLayer(id, -1)}
+                        aria-label={`Turunkan lapisan ${EL_NAMES[id]}`}
+                        className="focus-ring rounded px-1.5 text-xs text-muted hover:text-ink"
+                      >
+                        ▼
+                      </button>
+                    </li>
+                  ))}
               </ul>
 
               {selected && sel && (
@@ -1951,6 +2371,8 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
                         onChange={(v) => setEl(selected, { songStyle: v })}
                         options={SONG_STYLES}
                       />
+                      <Range label="Ukuran teks lagu" value={sel.songText} min={0.2} max={2} step={0.05} onChange={(v) => setEl(selected, { songText: v })} />
+                      <Range label="Ukuran cover / kaset" value={sel.songCover} min={0.2} max={2} step={0.05} onChange={(v) => setEl(selected, { songCover: v })} />
                     </div>
                   )}
 
@@ -1958,6 +2380,9 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
                     <Range label="Ukuran" value={sel.size} min={0.3} max={3} step={0.05} onChange={(v) => setEl(selected, { size: v })} />
                     <Range label="Lebar kotak" value={sel.w} min={0.2} max={1.2} step={0.02} onChange={(v) => setEl(selected, { w: v })} />
                     <Range label="Putar" value={sel.rotation} min={-180} max={180} step={1} suffix="°" onChange={(v) => setEl(selected, { rotation: v })} />
+                    <Range label="Tinggi (regang)" value={sel.stretch} min={0.2} max={4} step={0.05} onChange={(v) => setEl(selected, { stretch: v })} />
+                    <Range label="Posisi X" value={sel.x} min={-0.5} max={1.5} step={0.005} onChange={(v) => { touched.current = true; setEl(selected, { x: v }); }} />
+                    <Range label="Posisi Y" value={sel.y} min={-0.3} max={1.2} step={0.005} onChange={(v) => { touched.current = true; setEl(selected, { y: v }); }} />
                     <Range label="Transparansi" value={sel.opacity} min={0.1} max={1} step={0.05} onChange={(v) => setEl(selected, { opacity: v })} />
                     <Seg
                       label="Rata teks"
@@ -2000,6 +2425,9 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
                       <Toggle label="HURUF BESAR" checked={sel.upper} onChange={(v) => setEl(selected, { upper: v })} />
                     </div>
                     <Range label="Jarak huruf" value={sel.spacing} min={0} max={30} step={1} suffix="px" onChange={(v) => setEl(selected, { spacing: v })} />
+                    {HAS_LABEL[selected] && (
+                      <Range label="Ukuran label" value={sel.labelSize} min={0.3} max={2} step={0.05} onChange={(v) => setEl(selected, { labelSize: v })} />
+                    )}
                     {HAS_LABEL[selected] && (
                       <div className="flex items-center gap-2">
                         <label className="flex items-center gap-1.5 text-xs text-muted">

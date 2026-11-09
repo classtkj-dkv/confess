@@ -12,13 +12,11 @@ export function publicConfessionOf(
 ): Record<string, unknown> {
   const fromName = String(c.fromName ?? "");
   const toName = String(c.toName ?? "");
-  const kind = c.kind === "songfess" ? "songfess" : "menfess";
   const s = (c.song ?? null) as Record<string, unknown> | null;
   const songLyric = String(c.songLyric ?? "");
   return {
     id,
     message: String(c.message ?? ""),
-    kind,
     ...(fromName ? { fromName } : {}),
     ...(toName ? { toName } : {}),
     ...(s && s.id

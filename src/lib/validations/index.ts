@@ -17,7 +17,6 @@ export interface ValidatedConfessionInput {
   category: string;
   fromName: string;
   toName: string;
-  kind: "menfess" | "songfess";
   songId: string;
   songLyric: string;
 }
@@ -28,7 +27,7 @@ export function validateConfessionInput(
   if (typeof body !== "object" || body === null) {
     throw new Error("Payload tidak valid.");
   }
-  const { message, category, fromName, toName, songId, songLyric, kind } = body as Record<
+  const { message, category, fromName, toName, songId, songLyric } = body as Record<
     string,
     unknown
   >;
@@ -49,7 +48,6 @@ export function validateConfessionInput(
     category,
     fromName: cleanName(fromName),
     toName: cleanName(toName),
-    kind: kind === "songfess" ? "songfess" : "menfess",
     songId: cleanSongId,
     songLyric:
       cleanSongId && typeof songLyric === "string"

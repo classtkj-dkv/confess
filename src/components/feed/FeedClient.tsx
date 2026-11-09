@@ -119,12 +119,9 @@ export function FeedClient() {
     return unsub;
   }, [realtime]);
 
-  const [kind, setKind] = useState<"all" | "menfess" | "songfess">("all");
-  const shownAll = realtime
+  const shown = realtime
     ? [...live, ...extra.filter((e) => !live.some((l) => l.id === e.id))]
     : items;
-  const shown =
-    kind === "all" ? shownAll : shownAll.filter((c) => (c.kind ?? "menfess") === kind);
   const canLoadMore = realtime ? (extraMore ?? liveMore) : hasMore;
 
   async function loadMore() {
@@ -192,30 +189,6 @@ export function FeedClient() {
               Hapus filter pencarian
             </button>
           )}
-        </div>
-
-        <div className="flex gap-2" role="toolbar" aria-label="Jenis">
-          {(
-            [
-              ["all", "Semua"],
-              ["menfess", "Menfess"],
-              ["songfess", "Songfess"],
-            ] as const
-          ).map(([id, label]) => (
-            <button
-              key={id}
-              type="button"
-              aria-pressed={kind === id}
-              onClick={() => setKind(id)}
-              className={`focus-ring rounded-full border px-3 py-1 text-[11px] font-semibold transition-colors ${
-                kind === id
-                  ? "border-primary bg-primary/15 text-primary"
-                  : "border-hairline bg-surface text-muted hover:text-ink"
-              }`}
-            >
-              {label}
-            </button>
-          ))}
         </div>
 
         <div className="flex gap-2 overflow-x-auto pb-1" role="toolbar" aria-label="Kategori">
