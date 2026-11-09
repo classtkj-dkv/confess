@@ -7,6 +7,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   allowComments: true,
   allowConfessions: true,
   allowSongs: true,
+  aiModeration: true,
   maxConfessionLength: 1000,
   dailySubmissionLimit: 5,
 };
@@ -30,6 +31,7 @@ export function parseSettings(data: unknown): AppSettings {
     allowComments: d.allowComments !== false,
     allowConfessions: d.allowConfessions !== false,
     allowSongs: d.allowSongs !== false,
+    aiModeration: d.aiModeration !== false,
     maxConfessionLength: clampInt(d.maxConfessionLength, 50, 1000, 1000),
     dailySubmissionLimit: clampInt(d.dailySubmissionLimit, 1, 50, 5),
   };

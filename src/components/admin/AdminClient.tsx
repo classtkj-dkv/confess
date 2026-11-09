@@ -914,6 +914,7 @@ function AnnouncementBase({
   const [allowComments, setAllowComments] = useState(true);
   const [allowConfessions, setAllowConfessions] = useState(true);
   const [allowSongs, setAllowSongs] = useState(true);
+  const [aiModeration, setAiModeration] = useState(true);
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
 
@@ -926,9 +927,11 @@ function AnnouncementBase({
           allowComments?: boolean;
           allowConfessions?: boolean;
           allowSongs?: boolean;
+          aiModeration?: boolean;
         };
         setAllowConfessions(data.allowConfessions !== false);
         setAllowSongs(data.allowSongs !== false);
+        setAiModeration(data.aiModeration !== false);
         setAnnouncement(data.announcement ?? "");
         setMaintenance(data.maintenanceMode === true);
         setAllowComments(data.allowComments !== false);
@@ -946,6 +949,7 @@ function AnnouncementBase({
     allowComments?: boolean;
     allowConfessions?: boolean;
     allowSongs?: boolean;
+    aiModeration?: boolean;
   }) {
     setBusy(true);
     try {
@@ -1024,6 +1028,25 @@ function AnnouncementBase({
             label="Komentar"
           />
         </div>
+        {withMaintenance && (
+          <div className="flex items-center justify-between gap-4 p-5">
+            <div>
+              <p className="font-semibold text-ink">Moderasi AI</p>
+              <p className="mt-0.5 text-xs text-muted">
+                AI menyetujui confession yang sopan (maks 10 per jam), meminta revisi bila kurang
+                pas, dan menyerahkan kasus sensitif ke moderator.
+              </p>
+            </div>
+            <ToggleSwitch
+              checked={aiModeration}
+              onChange={(v) => {
+                setAiModeration(v);
+                void save({ aiModeration: v });
+              }}
+              label="Moderasi AI"
+            />
+          </div>
+        )}
         {withMaintenance && (
           <div className="flex items-center justify-between gap-4 p-5">
             <div>

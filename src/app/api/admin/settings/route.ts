@@ -31,6 +31,9 @@ export async function POST(req: NextRequest): Promise<Response> {
     if (typeof body.allowConfessions === "boolean") {
       patch.allowConfessions = body.allowConfessions;
     }
+    if (typeof body.aiModeration === "boolean") {
+      patch.aiModeration = body.aiModeration;
+    }
     if (typeof body.allowSongs === "boolean") {
       patch.allowSongs = body.allowSongs;
     }

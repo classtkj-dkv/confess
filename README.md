@@ -167,3 +167,18 @@ npm run build      # build produksi
 npm run typecheck  # tsc --noEmit
 npm run lint       # next lint
 ```
+
+## Moderasi AI (OpenRouter)
+
+Isi `OPENROUTER_API_KEY` di Vercel untuk mengaktifkan. Alurnya:
+
+1. Confession dinilai AI (paham bahasa gaul Indonesia). Hasilnya: **approve** (sopan & aman → langsung tayang),
+   **revise** (pengirim diminta merevisi, isi tidak hilang), atau **manual** (sensitif/ragu → moderator).
+2. AI hanya boleh menyetujui **10 confession per jam** (`AI_APPROVALS_PER_HOUR`, jendela per jam). Setelah penuh,
+   kiriman masuk antrean moderator seperti biasa.
+3. Anti-penyalahgunaan: tiap pengguna maksimal 4 pengecekan AI per jam; yang kuota hariannya habis tidak memakai AI;
+   permintaan revisi tidak mengurangi kuota harian atau kuota persetujuan AI.
+4. AI gagal / timeout / tidak ada key → otomatis moderasi manual (tidak pernah memblokir pengirim).
+5. Admin bisa mematikan lewat toggle **Moderasi AI** di panel pengaturan.
+
+Keputusan AI tersimpan di data privat (`confessions/{id}/moderation`). Komentar belum dimoderasi AI.

@@ -48,9 +48,20 @@ export async function checkRateLimit(
   };
 }
 
+/** Cek tanpa menghabiskan kuota. */
+export async function peekRateLimit(cfg: RateLimitConfig): Promise<boolean> {
+  const windowStart = Math.floor(Date.now() / cfg.windowMs) * cfg.windowMs;
+  const snap = await getAdminRtdb()
+    .ref(`rateLimits/${cfg.scope}_${cfg.uid}_${windowStart}`)
+    .get();
+  return Number(snap.val()?.count ?? 0) < cfg.limit;
+}
+
 export const RATE_LIMITS = {
   confessionPerDay: { limit: 5, windowMs: 24 * 60 * 60 * 1000 },
   commentPerHour: { limit: 10, windowMs: 60 * 60 * 1000 },
+  /** Cek AI per pengguna (mencegah user menghabiskan kuota AI). */
+  aiCheckPerHour: { limit: 4, windowMs: 60 * 60 * 1000 },
   songSearch: { limit: 60, windowMs: 10 * 60 * 1000 },
   reportPerDay: { limit: 10, windowMs: 24 * 60 * 60 * 1000 },
 } as const;

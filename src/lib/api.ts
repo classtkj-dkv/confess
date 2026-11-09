@@ -10,7 +10,8 @@ import { isFirebaseConfigured } from "@/lib/firebase/client";
 export class ApiClientError extends Error {
   constructor(
     public status: number,
-    message: string
+    message: string,
+    public code?: string
   ) {
     super(message);
   }
@@ -57,7 +58,11 @@ export async function api(
     const fallback = text
       ? `Server error ${res.status}: ${text.replace(/\s+/g, " ").slice(0, 140)}`
       : `Server error ${res.status} (respons kosong).`;
-    throw new ApiClientError(res.status, String(data?.error ?? fallback));
+    throw new ApiClientError(
+      res.status,
+      String(data?.error ?? fallback),
+      data?.code ? String(data.code) : undefined
+    );
   }
   return data;
 }

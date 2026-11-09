@@ -4,7 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import { SongCard } from "@/components/songs/SongCard";
 import { SongPicker } from "@/components/songs/SongPicker";
 import { CardStudioButton } from "@/components/studio/CardStudio";
-import type { Song } from "@/types";
+import type { ConfessionKind, Song } from "@/types";
+import { useSettings } from "@/lib/firebase/useSettings";
 import { useRouter } from "next/navigation";
 import { ApiClientError, api } from "@/lib/api";
 import { CATEGORIES } from "@/lib/categories";
@@ -30,6 +31,10 @@ export function ConfessionForm({ defaultCategory }: { defaultCategory?: string }
   const [toName, setToName] = useState("");
   const [song, setSong] = useState<Song | null>(null);
   const [lyric, setLyric] = useState("");
+  const [kind, setKind] = useState<ConfessionKind>("menfess");
+  const [revision, setRevision] = useState("");
+  const [sentStatus, setSentStatus] = useState<"PENDING" | "PUBLISHED">("PENDING");
+  const { settings } = useSettings();
 
   // Nama pengirim diingat di browser ini supaya tidak perlu diketik ulang.
   useEffect(() => {
@@ -41,9 +46,10 @@ export function ConfessionForm({ defaultCategory }: { defaultCategory?: string }
     }
   }, []);
 
+  const isSongfess = kind === "songfess" && settings.allowSongs;
   const invalid = useMemo(
-    () => !/[\p{L}\p{N}]/u.test(message),
-    [message]
+    () => !/[\p{L}\p{N}]/u.test(message) || (isSongfess && !song),
+    [message, isSongfess, song]
   );
   const categoryMeta = category ? getCategory(category) : null;
 
@@ -60,16 +66,19 @@ export function ConfessionForm({ defaultCategory }: { defaultCategory?: string }
 
     setBusy(true);
     try {
-      await api("/api/confessions", {
+      const res = await api("/api/confessions", {
         body: {
           message,
           category,
+          kind: isSongfess ? "songfess" : "menfess",
           fromName: fromName.trim(),
           toName: toName.trim(),
-          songId: song?.id ?? "",
-          songLyric: lyric.trim(),
+          songId: isSongfess ? (song?.id ?? "") : "",
+          songLyric: isSongfess ? lyric.trim() : "",
         },
       });
+      setSentStatus(res.status === "PUBLISHED" ? "PUBLISHED" : "PENDING");
+      setRevision("");
       try {
         if (fromName.trim()) localStorage.setItem(NAME_KEY, fromName.trim());
         else localStorage.removeItem(NAME_KEY);
@@ -84,7 +93,11 @@ export function ConfessionForm({ defaultCategory }: { defaultCategory?: string }
       setCategory("");
       setAgree(false);
     } catch (err) {
-      if (err instanceof ApiClientError) {
+      if (err instanceof ApiClientError && err.code === "needs-revision") {
+        // AI meminta revisi: kembali ke editor, isi tetap utuh.
+        setRevision(err.message);
+        setStep("compose");
+      } else if (err instanceof ApiClientError) {
         toast(err.status === 429 ? "warning" : "error", err.message);
       } else {
         toast("error", "Gagal mengirim confession. Coba lagi.");
@@ -101,10 +114,12 @@ export function ConfessionForm({ defaultCategory }: { defaultCategory?: string }
           <Icon name="clock" className="h-7 w-7" />
         </div>
         <h2 className="mt-4 text-lg font-bold text-ink">
-          Terkirim, menunggu moderasi
+          {sentStatus === "PUBLISHED" ? "Sudah tayang di feed" : "Terkirim, menunggu moderasi"}
         </h2>
         <p className="mx-auto mt-2 max-w-md text-sm text-muted">
-          Akan tampil di feed setelah disetujui moderator.
+          {sentStatus === "PUBLISHED"
+            ? "Pesanmu lolos pengecekan dan sekarang bisa dilihat semua orang."
+            : "Akan tampil di feed setelah disetujui moderator."}
         </p>
         <div className="mt-6 flex flex-wrap justify-center gap-2">
           <button
@@ -147,7 +162,7 @@ export function ConfessionForm({ defaultCategory }: { defaultCategory?: string }
             </p>
           )}
           <p className="mt-3 whitespace-pre-line text-sm text-ink/90">{message}</p>
-          {song && (
+          {isSongfess && song && (
             <div className="mt-3">
               <SongCard song={song} lyric={lyric.trim()} />
             </div>
@@ -155,7 +170,13 @@ export function ConfessionForm({ defaultCategory }: { defaultCategory?: string }
         </article>
         <CardStudioButton
           className="btn-ghost w-full"
-          data={{ fromName, toName, message, song, songLyric: lyric }}
+          data={{
+            fromName,
+            toName,
+            message,
+            song: isSongfess ? song : null,
+            songLyric: isSongfess ? lyric : "",
+          }}
         >
           Atur kartu & unduh
         </CardStudioButton>
@@ -189,6 +210,39 @@ export function ConfessionForm({ defaultCategory }: { defaultCategory?: string }
         if (!invalid) setStep("preview");
       }}
     >
+      {settings.allowSongs && (
+        <div
+          role="tablist"
+          aria-label="Jenis kiriman"
+          className="grid grid-cols-2 gap-1 rounded-xl bg-surface p-1"
+        >
+          {(["menfess", "songfess"] as const).map((k) => (
+            <button
+              key={k}
+              type="button"
+              role="tab"
+              aria-selected={kind === k}
+              onClick={() => setKind(k)}
+              className={`focus-ring rounded-lg px-3 py-2 text-sm font-semibold capitalize transition-colors ${
+                kind === k ? "bg-primary text-white" : "text-muted hover:text-ink"
+              }`}
+            >
+              {k === "menfess" ? "Menfess" : "Songfess"}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {revision && (
+        <div
+          role="alert"
+          className="rounded-xl border border-warning/40 bg-warning/10 p-3 text-sm text-ink"
+        >
+          <p className="font-semibold">Perlu direvisi dulu ya</p>
+          <p className="mt-1 text-muted">{revision}</p>
+        </div>
+      )}
+
       <div className="grid gap-3 sm:grid-cols-2">
         <div>
           <label htmlFor="from-name" className="label">
@@ -235,7 +289,9 @@ export function ConfessionForm({ defaultCategory }: { defaultCategory?: string }
         />
       </div>
 
-      <SongPicker song={song} lyric={lyric} onSong={setSong} onLyric={setLyric} />
+      {isSongfess && (
+        <SongPicker song={song} lyric={lyric} onSong={setSong} onLyric={setLyric} />
+      )}
 
       <div>
         <span id="cat-label" className="label">

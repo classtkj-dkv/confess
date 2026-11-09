@@ -7,7 +7,9 @@ import {
   errorResponse,
   requireUid,
 } from "@/lib/security/apiHelpers";
-import { checkRateLimit, RATE_LIMITS } from "@/lib/security/rateLimit";
+import { checkRateLimit, peekRateLimit, RATE_LIMITS } from "@/lib/security/rateLimit";
+import { aiApprovalsPerHour, isAiConfigured, moderateWithAI } from "@/lib/ai/moderate";
+import { publicConfessionOf } from "@/lib/firebase/publicData";
 import { isCategoryId } from "@/lib/categories";
 import { sanitizeText } from "@/lib/security/sanitize";
 import { validateConfessionInput } from "@/lib/validations";
@@ -47,7 +49,7 @@ export async function POST(req: NextRequest): Promise<Response> {
       throw new ApiError(400, "Body JSON tidak valid.");
     }
 
-    const { message, category, fromName, toName, songId, songLyric } =
+    const { message, category, fromName, toName, songId, songLyric, kind } =
       validateConfessionInput(raw);
 
     if (!isCategoryId(category)) {
@@ -69,28 +71,14 @@ export async function POST(req: NextRequest): Promise<Response> {
       throw new ApiError(400, `Confession maksimal ${maxLen.toLocaleString("id-ID")} karakter.`);
     }
 
-    // Lagu: data kanonik diambil ulang dari Deezer (klien tidak dipercaya).
+    // Lagu: hanya untuk songfess; data kanonik diambil ulang dari Deezer.
     let song: { id: string; title: string; artist: string; cover: string } | null = null;
-    if (songId) {
+    if (kind === "songfess") {
       if (!settings.allowSongs) throw new ApiError(403, "Fitur lagu sedang dinonaktifkan.");
+      if (!songId) throw new ApiError(400, "Songfess butuh lagu. Pilih lagunya dulu ya.");
       const track = await getTrack(songId);
       if (!track) throw new ApiError(400, "Lagu tidak ditemukan. Pilih lagu lain.");
       song = { id: track.id, title: track.title, artist: track.artist, cover: track.cover };
-    }
-
-    // Rate limit: dailySubmissionLimit confession per UID per hari.
-    const rl = await checkRateLimit({
-      scope: "confession",
-      uid,
-      limit: settings.dailySubmissionLimit,
-      windowMs: RATE_LIMITS.confessionPerDay.windowMs,
-    });
-    if (!rl.allowed) {
-      throw new ApiError(
-        429,
-        `Batas ${settings.dailySubmissionLimit} confession per hari sudah tercapai. Coba lagi besok.`,
-        "rate-limited"
-      );
     }
 
     // Duplicate submission protection within 30 minutes.
@@ -116,6 +104,64 @@ export async function POST(req: NextRequest): Promise<Response> {
       }
     }
 
+    const dailyCfg = {
+      scope: "confession",
+      uid,
+      limit: settings.dailySubmissionLimit,
+      windowMs: RATE_LIMITS.confessionPerDay.windowMs,
+    };
+    const dailyError = new ApiError(
+      429,
+      `Batas ${settings.dailySubmissionLimit} confession per hari sudah tercapai. Coba lagi besok.`,
+      "rate-limited"
+    );
+    // Cek dulu tanpa mengurangi kuota: yang sudah habis tidak boleh memakai AI.
+    if (!(await peekRateLimit(dailyCfg))) throw dailyError;
+
+    // ── Moderasi AI (opsional). Gagal/penuh → otomatis moderasi manual. ──
+    let status: "PENDING" | "PUBLISHED" = "PENDING";
+    let moderation: Record<string, unknown> | null = null;
+    if (settings.aiModeration && isAiConfigured()) {
+      const aiCheck = await checkRateLimit({
+        scope: "aicheck",
+        uid,
+        limit: RATE_LIMITS.aiCheckPerHour.limit,
+        windowMs: RATE_LIMITS.aiCheckPerHour.windowMs,
+      });
+      const approveCfg = {
+        scope: "aiapprove",
+        uid: "global",
+        limit: aiApprovalsPerHour(),
+        windowMs: 60 * 60 * 1000,
+      };
+      if (aiCheck.allowed && (await peekRateLimit(approveCfg))) {
+        const ai = await moderateWithAI({
+          message,
+          fromName,
+          toName,
+          songLabel: song ? `${song.title} - ${song.artist}` : "",
+          lyric: song ? songLyric : "",
+        });
+        if (ai?.verdict === "revise") {
+          throw new ApiError(422, ai.feedback, "needs-revision");
+        }
+        if (ai?.verdict === "approve") {
+          // Kuota persetujuan AI global (per jam) baru dikurangi saat benar-benar menyetujui.
+          const slot = await checkRateLimit(approveCfg);
+          if (slot.allowed) {
+            status = "PUBLISHED";
+            moderation = { by: "ai", verdict: "approve", model: ai.model, at: Date.now() };
+          }
+        } else if (ai) {
+          moderation = { by: "ai", verdict: "manual", model: ai.model, at: Date.now() };
+        }
+      }
+    }
+
+    // Kuota harian hanya berkurang untuk kiriman yang benar-benar tersimpan.
+    const rl = await checkRateLimit(dailyCfg);
+    if (!rl.allowed) throw dailyError;
+
     // Re-check: FINAL sanity trim + length enforcement
     const finalMessage = sanitizeText(message, maxLen);
     if (!/[\p{L}\p{N}]/u.test(finalMessage)) {
@@ -123,27 +169,43 @@ export async function POST(req: NextRequest): Promise<Response> {
     }
 
     const ref = db.ref("confessions").push();
+    const id = String(ref.key);
     const now = Date.now();
-    await ref.set({
-      id: ref.key,
+    const record: Record<string, unknown> = {
+      id,
       message: finalMessage,
       messageLower: finalMessage.toLowerCase(),
       category,
+      kind,
       ...(fromName ? { fromName } : {}),
       ...(toName ? { toName } : {}),
       ...(song ? { song, ...(songLyric ? { songLyric } : {}) } : {}),
+      ...(moderation ? { moderation } : {}),
       authorUid: uid,
       createdAt: now,
       updatedAt: now,
-      status: "PENDING",
+      status,
       likesCount: 0,
       commentsCount: 0,
-    });
+    };
+    if (status === "PUBLISHED") {
+      await db.ref().update({
+        [`confessions/${id}`]: record,
+        [`public/confessions/${id}`]: publicConfessionOf(id, record),
+      });
+    } else {
+      await ref.set(record);
+    }
     await touchAdmin();
-    await writeActivity(uid, "confession_submitted", String(ref.key), { category });
+    await writeActivity(uid, "confession_submitted", id, {
+      category,
+      kind,
+      status,
+      ai: moderation ? String(moderation.verdict) : "none",
+    });
 
     return Response.json(
-      { ok: true, id: ref.key, status: "PENDING" },
+      { ok: true, id, status },
       { status: 201 }
     );
   } catch (err) {

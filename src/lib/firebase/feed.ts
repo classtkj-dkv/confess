@@ -55,6 +55,7 @@ function toConfession(id: string, data: Record<string, unknown>): Confession {
     id,
     message: String(data.message ?? ""),
     category: (data.category ?? "random") as Confession["category"],
+    kind: data.kind === "songfess" ? "songfess" : "menfess",
     fromName: data.fromName ? String(data.fromName) : undefined,
     toName: data.toName ? String(data.toName) : undefined,
     song:
