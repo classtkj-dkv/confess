@@ -14,8 +14,9 @@ export interface StudioData {
 
 type Align = "left" | "center" | "right";
 type Ratio = "story" | "post" | "square";
-type FontId = "script" | "serif" | "sans" | "mono";
 type ElId = "title" | "to" | "from" | "message" | "song" | "lyric";
+type SongStyle = "cover" | "pill" | "card" | "cassette" | "text";
+type BgMode = "gen" | "custom" | "image";
 
 const EL_IDS: ElId[] = ["title", "to", "from", "message", "song", "lyric"];
 const EL_NAMES: Record<ElId, string> = {
@@ -50,50 +51,77 @@ const PALETTES = [
   { name: "Malam", stops: ["#0f172a", "#312e81", "#6d28d9"], text: "#ffffff" },
 ];
 
-const FONTS: { id: FontId; label: string; css: string; italic: boolean }[] = [
-  {
-    id: "script",
-    label: "Script",
-    css: '"Segoe Script","Snell Roundhand","Brush Script MT","Lucida Handwriting",cursive',
-    italic: false,
-  },
-  { id: "serif", label: "Serif", css: 'Georgia,"Times New Roman",serif', italic: true },
-  {
-    id: "sans",
-    label: "Sans",
-    css: 'system-ui,-apple-system,"Segoe UI",Roboto,sans-serif',
-    italic: false,
-  },
-  {
-    id: "mono",
-    label: "Mono",
-    css: 'ui-monospace,"SFMono-Regular",Menlo,Consolas,monospace',
-    italic: false,
-  },
+/** g = nama keluarga Google Fonts (dimuat saat studio dibuka); css = fallback bila offline. */
+const FONTS: { id: string; label: string; css: string; g?: string }[] = [
+  { id: "dancing", label: "Dancing Script", css: '"Dancing Script","Segoe Script",cursive', g: "Dancing+Script:wght@400;700" },
+  { id: "vibes", label: "Great Vibes", css: '"Great Vibes","Snell Roundhand",cursive', g: "Great+Vibes" },
+  { id: "pacifico", label: "Pacifico", css: "Pacifico,cursive", g: "Pacifico" },
+  { id: "caveat", label: "Caveat", css: "Caveat,cursive", g: "Caveat:wght@400;700" },
+  { id: "marker", label: "Marker", css: '"Permanent Marker",cursive', g: "Permanent+Marker" },
+  { id: "playfair", label: "Playfair", css: '"Playfair Display",Georgia,serif', g: "Playfair+Display:wght@400;700" },
+  { id: "serif", label: "Serif", css: 'Georgia,"Times New Roman",serif' },
+  { id: "montserrat", label: "Montserrat", css: "Montserrat,system-ui,sans-serif", g: "Montserrat:wght@400;700" },
+  { id: "poppins", label: "Poppins", css: "Poppins,system-ui,sans-serif", g: "Poppins:wght@400;700" },
+  { id: "bebas", label: "Bebas Neue", css: '"Bebas Neue",Impact,sans-serif', g: "Bebas+Neue" },
+  { id: "script", label: "Script (sistem)", css: '"Segoe Script","Snell Roundhand","Brush Script MT",cursive' },
+  { id: "sans", label: "Sans (sistem)", css: 'system-ui,-apple-system,"Segoe UI",Roboto,sans-serif' },
+  { id: "mono", label: "Mono (sistem)", css: 'ui-monospace,"SFMono-Regular",Menlo,Consolas,monospace' },
+];
+const FONT_IDS = FONTS.map((f) => f.id);
+
+const SWATCHES = [
+  "#ffffff", "#000000", "#0b3d91", "#2f80ff", "#06b6d4", "#10b981", "#84cc16", "#facc15",
+  "#f97316", "#ef4444", "#ec4899", "#a855f7", "#6366f1", "#78350f", "#9ca3af", "#fde68a",
 ];
 
-/** Pengaturan satu elemen di kartu. Posisi & lebar dalam pecahan lebar/tinggi kanvas. */
+const SONG_STYLES: { id: SongStyle; label: string }[] = [
+  { id: "cover", label: "Cover" },
+  { id: "pill", label: "Pil" },
+  { id: "card", label: "Kartu" },
+  { id: "cassette", label: "Kaset" },
+  { id: "text", label: "Teks" },
+];
+
+/** Pengaturan satu elemen. Posisi & lebar = pecahan lebar/tinggi kanvas. "" pada warna = otomatis. */
 interface El {
   visible: boolean;
   x: number;
   y: number;
   w: number;
   size: number;
+  rotation: number;
+  opacity: number;
   align: Align;
-  /** Kosong = ikut warna utama. */
+  font: string;
+  bold: boolean;
+  italic: boolean;
+  upper: boolean;
+  spacing: number;
   color: string;
+  labelColor: string;
   showLabel: boolean;
   label: string;
+  strokeW: number;
+  strokeColor: string;
+  shadowBlur: number;
+  shadowColor: string;
+  songStyle: SongStyle;
+  fill: string;
 }
 
-/** Semua pengaturan tampilan. Inilah yang disimpan sebagai template (tanpa isi pesan). */
+/** Semua pengaturan tampilan = isi template (tanpa isi pesan). */
 interface Design {
   ratio: Ratio;
-  bgMode: "gen" | "image";
+  bgMode: BgMode;
   palette: number;
   seed: number;
+  bgA: string;
+  bgB: string;
+  bgAngle: number;
+  bgDeco: boolean;
   overlay: number;
-  font: FontId;
+  overlayColor: string;
+  font: string;
   color: string;
   title: string;
   els: Record<ElId, El>;
@@ -116,15 +144,28 @@ interface Template {
   thumb: string;
 }
 
+interface TemplateFile {
+  app: "confess-template";
+  v: 1;
+  name: string;
+  design: Design;
+  bg: string | null;
+}
+
 interface Box {
   x: number;
   y: number;
   w: number;
   h: number;
+  rot: number;
 }
 type Boxes = Partial<Record<ElId, Box>>;
 
-/* ───────────── util kanvas ───────────── */
+/* ───────────── util ───────────── */
+
+const HEX = /^#[0-9a-f]{6}$/i;
+const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v));
+const normDeg = (x: number) => ((((x + 180) % 360) + 360) % 360) - 180;
 
 function rng(seed: number): () => number {
   let a = seed >>> 0;
@@ -138,26 +179,19 @@ function rng(seed: number): () => number {
 }
 
 function isLight(hex: string): boolean {
-  const m = /^#?([0-9a-f]{6})$/i.exec(hex);
-  if (!m) return false;
-  const n = parseInt(m[1], 16);
+  if (!HEX.test(hex)) return false;
+  const n = parseInt(hex.slice(1), 16);
   return 0.299 * ((n >> 16) & 255) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255) > 150;
 }
 
-function roundRect(
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  w: number,
-  h: number,
-  r: number
-) {
+function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
+  const rr = Math.max(0, Math.min(r, w / 2, h / 2));
   ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.arcTo(x + w, y, x + w, y + h, r);
-  ctx.arcTo(x + w, y + h, x, y + h, r);
-  ctx.arcTo(x, y + h, x, y, r);
-  ctx.arcTo(x, y, x + w, y, r);
+  ctx.moveTo(x + rr, y);
+  ctx.arcTo(x + w, y, x + w, y + h, rr);
+  ctx.arcTo(x + w, y + h, x, y + h, rr);
+  ctx.arcTo(x, y + h, x, y, rr);
+  ctx.arcTo(x, y, x + w, y, rr);
   ctx.closePath();
 }
 
@@ -206,35 +240,50 @@ function loadImg(src: string): Promise<HTMLImageElement> {
   });
 }
 
-function drawBackground(
-  ctx: CanvasRenderingContext2D,
-  W: number,
-  H: number,
-  d: Design,
-  bg: HTMLImageElement | null
-) {
-  if (d.bgMode === "image" && bg) {
-    ctx.fillStyle = "#000";
-    ctx.fillRect(0, 0, W, H);
-    const k = Math.max(W / bg.naturalWidth, H / bg.naturalHeight);
-    const dw = bg.naturalWidth * k;
-    const dh = bg.naturalHeight * k;
-    ctx.drawImage(bg, (W - dw) / 2, (H - dh) / 2, dw, dh);
-    if (d.overlay > 0) {
-      ctx.fillStyle = `rgba(${isLight(d.color) ? "0,0,0" : "255,255,255"},${d.overlay})`;
-      ctx.fillRect(0, 0, W, H);
-    }
-    return;
+function setSpacing(ctx: CanvasRenderingContext2D, px: number) {
+  if ("letterSpacing" in ctx) {
+    (ctx as unknown as { letterSpacing: string }).letterSpacing = `${px.toFixed(1)}px`;
   }
-  const p = PALETTES[d.palette] ?? PALETTES[0];
-  const g = ctx.createLinearGradient(0, 0, W, H);
-  g.addColorStop(0, p.stops[0]);
-  g.addColorStop(0.55, p.stops[1]);
-  g.addColorStop(1, p.stops[2]);
-  ctx.fillStyle = g;
-  ctx.fillRect(0, 0, W, H);
+}
 
-  const rand = rng(d.seed * 7919 + 13);
+function ensureFontLinks() {
+  for (const f of FONTS) {
+    if (!f.g || document.getElementById(`gf-${f.id}`)) continue;
+    const l = document.createElement("link");
+    l.id = `gf-${f.id}`;
+    l.rel = "stylesheet";
+    l.href = `https://fonts.googleapis.com/css2?family=${f.g}&display=swap`;
+    document.head.appendChild(l);
+  }
+}
+
+function averageColor(img: HTMLImageElement): string {
+  try {
+    const c = document.createElement("canvas");
+    c.width = 8;
+    c.height = 8;
+    const ctx = c.getContext("2d");
+    if (!ctx) return "#a9b04a";
+    ctx.drawImage(img, 0, 0, 8, 8);
+    const d = ctx.getImageData(0, 0, 8, 8).data;
+    let r = 0;
+    let g = 0;
+    let b = 0;
+    for (let i = 0; i < d.length; i += 4) {
+      r += d[i];
+      g += d[i + 1];
+      b += d[i + 2];
+    }
+    const n = d.length / 4;
+    const h = (v: number) => Math.round(v / n).toString(16).padStart(2, "0");
+    return `#${h(r)}${h(g)}${h(b)}`;
+  } catch {
+    return "#a9b04a";
+  }
+}
+
+function drawDeco(ctx: CanvasRenderingContext2D, W: number, H: number, seed: number) {
+  const rand = rng(seed * 7919 + 13);
   for (let i = 0; i < 4; i++) {
     const x = rand() * W;
     const y = rand() * H;
@@ -259,153 +308,363 @@ function drawBackground(
   }
 }
 
-/**
- * Menggambar satu elemen di posisinya sendiri (atau di yOverride).
- * dry=true hanya mengukur. Mengembalikan kotak elemen, atau null bila tidak ada isi.
- */
-function drawEl(
+function drawBackground(ctx: CanvasRenderingContext2D, W: number, H: number, d: Design, bg: HTMLImageElement | null) {
+  if (d.bgMode === "image" && bg) {
+    ctx.fillStyle = "#000";
+    ctx.fillRect(0, 0, W, H);
+    const k = Math.max(W / bg.naturalWidth, H / bg.naturalHeight);
+    const dw = bg.naturalWidth * k;
+    const dh = bg.naturalHeight * k;
+    ctx.drawImage(bg, (W - dw) / 2, (H - dh) / 2, dw, dh);
+    if (d.overlay > 0) {
+      ctx.save();
+      ctx.globalAlpha = d.overlay;
+      ctx.fillStyle = d.overlayColor || (isLight(d.color) ? "#000000" : "#ffffff");
+      ctx.fillRect(0, 0, W, H);
+      ctx.restore();
+    }
+    return;
+  }
+  if (d.bgMode === "custom") {
+    const a = (d.bgAngle * Math.PI) / 180;
+    const r = Math.hypot(W, H) / 2;
+    const cx = W / 2;
+    const cy = H / 2;
+    const g = ctx.createLinearGradient(
+      cx - Math.cos(a) * r,
+      cy - Math.sin(a) * r,
+      cx + Math.cos(a) * r,
+      cy + Math.sin(a) * r
+    );
+    g.addColorStop(0, d.bgA);
+    g.addColorStop(1, d.bgB);
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+    if (d.bgDeco) drawDeco(ctx, W, H, d.seed);
+    return;
+  }
+  const p = PALETTES[d.palette] ?? PALETTES[0];
+  const g = ctx.createLinearGradient(0, 0, W, H);
+  g.addColorStop(0, p.stops[0]);
+  g.addColorStop(0.55, p.stops[1]);
+  g.addColorStop(1, p.stops[2]);
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, W, H);
+  drawDeco(ctx, W, H, d.seed);
+}
+
+/* ───────────── menggambar elemen ───────────── */
+
+interface Lay {
+  ls: string[];
+  mw: number;
+  px: number;
+  bold: boolean;
+}
+
+/** Mengukur/menggambar satu elemen tanpa rotasi. dry=true hanya mengukur. */
+function paint(
   ctx: CanvasRenderingContext2D,
   id: ElId,
   d: Design,
   c: Content,
   cover: HTMLImageElement | null,
+  accent: string,
   W: number,
   H: number,
   dry: boolean,
-  yOverride?: number,
-  k = 1
-): Box | null {
+  yOverride: number | undefined,
+  k: number
+): { x: number; y: number; w: number; h: number } | null {
   const el = d.els[id];
-  const font = FONTS.find((f) => f.id === d.font) ?? FONTS[0];
+  const fam = (FONTS.find((f) => f.id === (el.font || d.font)) ?? FONTS[0]).css;
   const bx = el.x * W;
   const by = yOverride ?? el.y * H;
   const bw = el.w * W;
   const sz = el.size * k;
   const color = el.color || d.color;
   const ax = el.align === "left" ? bx : el.align === "center" ? bx + bw / 2 : bx + bw;
-  const fnt = (px: number, italic = false) =>
-    `${italic ? "italic " : ""}${Math.max(8, Math.round(px))}px ${font.css}`;
+  const fnt = (px: number, o?: { bold?: boolean }) =>
+    `${el.italic ? "italic " : ""}${(o?.bold ?? el.bold) ? "700 " : ""}${Math.max(8, Math.round(px))}px ${fam}`;
+  const T = (s: string) => (el.upper ? s.toUpperCase() : s);
 
   ctx.textAlign = el.align;
   ctx.textBaseline = "alphabetic";
   ctx.fillStyle = color;
+  setSpacing(ctx, el.spacing * sz);
 
   let y = by;
   const put = (text: string, py: number, px = ax) => {
-    if (!dry) ctx.fillText(text, px, py);
+    if (dry) return;
+    if (el.strokeW > 0) {
+      ctx.save();
+      ctx.lineJoin = "round";
+      ctx.lineWidth = el.strokeW * sz * 2;
+      ctx.strokeStyle = el.strokeColor;
+      ctx.shadowBlur = 0;
+      ctx.strokeText(text, px, py);
+      ctx.restore();
+    }
+    ctx.fillText(text, px, py);
+  };
+  const lay = (str: string, px: number, maxw: number, bold = el.bold): Lay => {
+    ctx.font = fnt(px, { bold });
+    const ls = wrap(ctx, T(str), maxw);
+    let mw = 0;
+    for (const l of ls) mw = Math.max(mw, ctx.measureText(l).width);
+    return { ls, mw, px, bold };
+  };
+  const hLay = (L: Lay, lh = 1.3) => L.ls.length * L.px * lh;
+  const drawLay = (L: Lay, x: number, y0: number, lh = 1.3) => {
+    ctx.font = fnt(L.px, { bold: L.bold });
+    let yy = y0;
+    for (const l of L.ls) {
+      yy += L.px * lh;
+      put(l, yy, x);
+    }
+    return yy;
   };
   const label = () => {
     if (!HAS_LABEL[id] || !el.showLabel || !el.label.trim()) return;
-    const lp = 58 * sz;
-    ctx.font = fnt(lp, true);
+    const lp = 56 * sz;
+    ctx.font = fnt(lp);
     y += lp * 1.1;
-    put(el.label.trim(), y);
+    ctx.fillStyle = el.labelColor || color;
+    put(T(el.label.trim()), y);
+    ctx.fillStyle = color;
     y += lp * 0.2;
   };
-  const value = (text: string) => {
-    const vp = 52 * sz;
-    ctx.font = fnt(vp);
-    for (const line of wrap(ctx, text, bw)) {
-      y += vp * 1.35;
-      put(line, y);
-    }
-  };
+  const place = (cw: number) =>
+    el.align === "left" ? bx : el.align === "center" ? bx + bw / 2 - cw / 2 : bx + bw - cw;
 
   if (id === "title") {
     const text = d.title.trim();
     if (!text) return null;
-    const px = 150 * sz;
-    ctx.font = fnt(px, font.italic);
-    for (const line of wrap(ctx, text, bw)) {
-      y += px * 0.95;
-      put(line, y);
-      y += px * 0.12;
+    const L = lay(text, 150 * sz, bw);
+    for (const l of L.ls) {
+      y += L.px * 0.95;
+      put(l, y);
+      y += L.px * 0.12;
     }
   } else if (id === "to" || id === "from" || id === "message") {
     const text = c[id].trim();
     if (!text) return null;
     label();
-    value(text);
-  } else if (id === "song") {
+    y = drawLay(lay(text, 52 * sz, bw), ax, y, 1.35);
+  } else if (id === "lyric") {
+    const text = c.lyric.trim();
+    if (!c.song || !text) return null;
+    y = drawLay(lay(`“${text}”`, 46 * sz, bw), ax, y, 1.4);
+  } else {
     const song = c.song;
     if (!song) return null;
     label();
     y += 10 * sz;
-    const stacked = el.align === "center";
-    const cs = Math.min(260 * sz, bw * (stacked ? 0.7 : 0.38));
-    const tp = 52 * sz;
+    const style = el.songStyle;
+    const tp = 54 * sz;
     const ap = 42 * sz;
-    const drawCover = (cx: number, cy: number) => {
+    const cardFill = el.fill || "#ffffff";
+    const onCard = el.color || (isLight(cardFill) ? "#111111" : "#ffffff");
+
+    const coverAt = (cx: number, cy: number, s: number, r: number) => {
       if (dry) return;
       ctx.save();
-      roundRect(ctx, cx, cy, cs, cs, cs * 0.1);
+      roundRect(ctx, cx, cy, s, s, r);
       if (cover) {
         ctx.clip();
-        ctx.drawImage(cover, cx, cy, cs, cs);
+        ctx.drawImage(cover, cx, cy, s, s);
       } else {
-        ctx.fillStyle = "rgba(255,255,255,0.35)";
+        ctx.fillStyle = "rgba(128,128,128,0.35)";
         ctx.fill();
         ctx.fillStyle = color;
         ctx.textAlign = "center";
-        ctx.font = fnt(cs * 0.45);
-        ctx.fillText("♪", cx + cs / 2, cy + cs * 0.65);
+        ctx.font = fnt(s * 0.45);
+        ctx.fillText("♪", cx + s / 2, cy + s * 0.65);
       }
       ctx.restore();
     };
+    const cardAt = (cx: number, cy: number, cw: number, ch: number, r: number) => {
+      if (dry) return;
+      ctx.save();
+      roundRect(ctx, cx, cy, cw, ch, r);
+      ctx.fillStyle = cardFill;
+      ctx.fill();
+      ctx.restore();
+    };
 
-    if (stacked) {
-      drawCover(bx + bw / 2 - cs / 2, y);
-      y += cs + 28 * sz;
-      ctx.font = fnt(tp);
-      for (const line of wrap(ctx, song.title, bw)) {
-        y += tp * 1.3;
-        put(line, y);
+    if (style === "text") {
+      const T1 = lay(song.title, tp * 1.1, bw, true);
+      const A1 = lay(song.artist || "", ap * 1.1, bw, true);
+      y = drawLay(T1, ax, y);
+      if (song.artist) y = drawLay(A1, ax, y + 4 * sz);
+    } else if (style === "cover") {
+      const cs = Math.min(300 * sz, bw * 0.85);
+      coverAt(place(cs), y, cs, cs * 0.02);
+      y += cs + 22 * sz;
+      y = drawLay(lay(song.title, tp, bw, true), ax, y);
+      if (song.artist) y = drawLay(lay(song.artist, ap, bw, true), ax, y + 4 * sz);
+    } else if (style === "card") {
+      const cs = Math.min(240 * sz, bw * 0.62);
+      const pad = cs * 0.07;
+      const cw = cs + pad * 2;
+      const T1 = lay(song.title, tp * 0.9, cs, true);
+      const A1 = lay(song.artist || "", ap * 0.9, cs, true);
+      const ch = pad + cs + 18 * sz + hLay(T1) + (song.artist ? hLay(A1) : 0) + pad * 1.4;
+      const cx = place(cw);
+      cardAt(cx, y, cw, ch, pad * 2.2);
+      coverAt(cx + pad, y + pad, cs, cs * 0.07);
+      if (!dry) {
+        ctx.fillStyle = onCard;
+        ctx.textAlign = "center";
       }
-      if (song.artist) {
-        ctx.font = fnt(ap);
-        for (const line of wrap(ctx, song.artist, bw)) {
-          y += ap * 1.35;
-          put(line, y);
-        }
+      let ty = drawLay(T1, cx + cw / 2, y + pad + cs + 18 * sz);
+      if (song.artist) ty = drawLay(A1, cx + cw / 2, ty);
+      if (!dry) {
+        ctx.fillStyle = color;
+        ctx.textAlign = el.align;
       }
+      y += ch;
+    } else if (style === "pill") {
+      const ps = 110 * sz;
+      const pad = ps * 0.11;
+      const maxText = Math.max(120 * sz, Math.min(bw, 760 * sz) - ps - pad * 3);
+      const T1 = lay(song.title, tp * 0.8, maxText, true);
+      const A1 = lay(song.artist || "", ap * 0.8, maxText, true);
+      const tw = Math.max(T1.mw, song.artist ? A1.mw : 0);
+      const cw = Math.min(bw, pad * 3 + ps + tw + pad * 0.5);
+      const th = hLay(T1) + (song.artist ? hLay(A1) : 0);
+      const ch = Math.max(ps, th) + pad * 2;
+      const cx = place(cw);
+      cardAt(cx, y, cw, ch, pad * 1.8);
+      coverAt(cx + pad, y + (ch - ps) / 2, ps, ps * 0.12);
+      if (!dry) {
+        ctx.fillStyle = onCard;
+        ctx.textAlign = "left";
+      }
+      const tx = cx + pad * 2 + ps;
+      const ty0 = y + (ch - th) / 2;
+      const ty = drawLay(T1, tx, ty0);
+      if (song.artist) drawLay(A1, tx, ty);
+      if (!dry) {
+        ctx.fillStyle = color;
+        ctx.textAlign = el.align;
+      }
+      y += ch;
     } else {
-      const gap = 32 * sz;
-      const tw = Math.max(120, bw - cs - gap);
-      const left = el.align === "left";
-      const coverX = left ? bx : bx + bw - cs;
-      const textX = left ? bx + cs + gap : bx + bw - cs - gap;
-      ctx.font = fnt(tp);
-      const titleLines = wrap(ctx, song.title, tw);
-      ctx.font = fnt(ap);
-      const artistLines = song.artist ? wrap(ctx, song.artist, tw) : [];
-      const th = titleLines.length * tp * 1.3 + artistLines.length * ap * 1.35;
-      drawCover(coverX, y);
-      let ty = y + Math.max(0, (cs - th) / 2);
-      ctx.font = fnt(tp);
-      for (const line of titleLines) {
-        ty += tp * 1.3;
-        put(line, ty, textX);
+      // kaset
+      const cw = Math.min(520 * sz, bw * 0.95);
+      const ch = cw * 0.62;
+      const cx = place(cw);
+      if (!dry) {
+        const band = el.fill || accent;
+        const m = cw * 0.035;
+        const lx = cx + m;
+        const ly = y + m;
+        const lw = cw - m * 2;
+        const lh = ch * 0.8;
+        const bandH = lh * 0.4;
+        const topH = lh - bandH;
+        ctx.save();
+        roundRect(ctx, cx, y, cw, ch, ch * 0.1);
+        ctx.fillStyle = "#0b0b0b";
+        ctx.fill();
+        roundRect(ctx, lx, ly, lw, lh, ch * 0.07);
+        ctx.fillStyle = "#ffffff";
+        ctx.fill();
+        ctx.save();
+        roundRect(ctx, lx, ly, lw, lh, ch * 0.07);
+        ctx.clip();
+        ctx.fillStyle = band;
+        ctx.fillRect(lx, ly + topH, lw, bandH);
+        ctx.restore();
+        ctx.strokeStyle = "#111111";
+        ctx.lineWidth = Math.max(1.5, cw * 0.004);
+        for (let i = 0; i < 5; i++) {
+          const yy = ly + topH * 0.12 + i * (topH * 0.2);
+          ctx.beginPath();
+          ctx.moveTo(lx + m, yy);
+          ctx.lineTo(lx + lw - m, yy);
+          ctx.stroke();
+        }
+        const cs = topH * 0.78;
+        coverAt(cx + cw / 2 - cs / 2, ly + (topH - cs) / 2, cs, cs * 0.12);
+        ctx.font = `${Math.round(cs * 0.62)}px system-ui, sans-serif`;
+        ctx.textAlign = "center";
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = "#111111";
+        ctx.fillStyle = band;
+        ctx.strokeText("♫", lx + lw * 0.14, ly + topH * 0.62);
+        ctx.fillText("♫", lx + lw * 0.14, ly + topH * 0.62);
+        ctx.strokeText("♪", lx + lw * 0.86, ly + topH * 0.62);
+        ctx.fillText("♪", lx + lw * 0.86, ly + topH * 0.62);
+        const pw = lw * 0.5;
+        const ph = bandH * 0.66;
+        const py = ly + topH + (bandH - ph) / 2;
+        roundRect(ctx, cx + cw / 2 - pw / 2, py, pw, ph, ph / 2);
+        ctx.fillStyle = "#0b0b0b";
+        ctx.fill();
+        for (const rx of [cx + cw / 2 - pw * 0.28, cx + cw / 2 + pw * 0.28]) {
+          ctx.beginPath();
+          ctx.arc(rx, py + ph / 2, ph * 0.36, 0, Math.PI * 2);
+          ctx.fillStyle = "#ffffff";
+          ctx.fill();
+          ctx.fillStyle = "#0b0b0b";
+          for (let i = 0; i < 6; i++) {
+            const a = (i * Math.PI) / 3;
+            ctx.beginPath();
+            ctx.arc(rx + Math.cos(a) * ph * 0.24, py + ph / 2 + Math.sin(a) * ph * 0.24, ph * 0.05, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
+        ctx.restore();
       }
-      ctx.font = fnt(ap);
-      for (const line of artistLines) {
-        ty += ap * 1.35;
-        put(line, ty, textX);
-      }
-      y += Math.max(cs, th);
-    }
-  } else {
-    // lyric
-    const text = c.lyric.trim();
-    if (!c.song || !text) return null;
-    const px = 46 * sz;
-    ctx.font = fnt(px, true);
-    for (const line of wrap(ctx, `“${text}”`, bw)) {
-      y += px * 1.4;
-      put(line, y);
+      y += ch + 24 * sz;
+      y = drawLay(lay(song.title, tp, bw, true), ax, y);
+      if (song.artist) y = drawLay(lay(song.artist, ap, bw, true), ax, y + 4 * sz);
     }
   }
 
+  setSpacing(ctx, 0);
   return { x: bx, y: by, w: bw, h: Math.max(8, y - by) };
+}
+
+/** Pembungkus: ukur dulu, lalu gambar dengan rotasi, transparansi, dan bayangan. */
+function drawEl(
+  ctx: CanvasRenderingContext2D,
+  id: ElId,
+  d: Design,
+  c: Content,
+  cover: HTMLImageElement | null,
+  accent: string,
+  W: number,
+  H: number,
+  dry: boolean,
+  yOverride?: number,
+  k = 1
+): Box | null {
+  const m = paint(ctx, id, d, c, cover, accent, W, H, true, yOverride, k);
+  if (!m) return null;
+  const el = d.els[id];
+  const rot = (el.rotation * Math.PI) / 180;
+  if (!dry) {
+    ctx.save();
+    ctx.globalAlpha = el.opacity;
+    if (rot) {
+      const cx = m.x + m.w / 2;
+      const cy = m.y + m.h / 2;
+      ctx.translate(cx, cy);
+      ctx.rotate(rot);
+      ctx.translate(-cx, -cy);
+    }
+    if (el.shadowBlur > 0) {
+      ctx.shadowColor = el.shadowColor;
+      ctx.shadowBlur = el.shadowBlur * el.size * k;
+      ctx.shadowOffsetY = el.shadowBlur * 0.25 * el.size * k;
+    }
+    paint(ctx, id, d, c, cover, accent, W, H, false, yOverride, k);
+    ctx.restore();
+  }
+  return { ...m, rot };
 }
 
 function renderCard(
@@ -414,6 +673,7 @@ function renderCard(
   c: Content,
   bg: HTMLImageElement | null,
   cover: HTMLImageElement | null,
+  accent: string,
   guides: { selected: ElId | null; snapX: boolean } | null
 ): Boxes {
   const { w: W, h: H } = SIZES[d.ratio];
@@ -425,7 +685,7 @@ function renderCard(
   const boxes: Boxes = {};
   for (const id of EL_IDS) {
     if (!d.els[id].visible) continue;
-    const b = drawEl(ctx, id, d, c, cover, W, H, false);
+    const b = drawEl(ctx, id, d, c, cover, accent, W, H, false);
     if (b) boxes[id] = b;
   }
   if (guides) {
@@ -442,7 +702,9 @@ function renderCard(
     const sel = guides.selected ? boxes[guides.selected] : undefined;
     if (sel) {
       ctx.strokeStyle = "#2f80ff";
-      ctx.strokeRect(sel.x - 12, sel.y - 12, sel.w + 24, sel.h + 24);
+      ctx.translate(sel.x + sel.w / 2, sel.y + sel.h / 2);
+      ctx.rotate(sel.rot);
+      ctx.strokeRect(-sel.w / 2 - 12, -sel.h / 2 - 12, sel.w + 24, sel.h + 24);
     }
     ctx.restore();
   }
@@ -457,7 +719,7 @@ function autoLayout(d: Design, c: Content): Design {
   const norm: Design = {
     ...d,
     els: Object.fromEntries(
-      EL_IDS.map((id) => [id, { ...d.els[id], x: 0.09, w: 0.82 }])
+      EL_IDS.map((id) => [id, { ...d.els[id], x: 0.09, w: 0.82, rotation: 0 }])
     ) as Record<ElId, El>,
   };
   const gap = 56;
@@ -469,7 +731,7 @@ function autoLayout(d: Design, c: Content): Design {
     total = 0;
     for (const id of EL_IDS) {
       if (!norm.els[id].visible) continue;
-      const b = drawEl(ctx, id, norm, c, null, W, H, true, 0, k);
+      const b = drawEl(ctx, id, norm, c, null, "#a9b04a", W, H, true, 0, k);
       if (b) {
         heights[id] = b.h;
         total += b.h + gap;
@@ -494,25 +756,48 @@ function autoLayout(d: Design, c: Content): Design {
   return { ...norm, els };
 }
 
-function defaultDesign(content: Content, hasLyric: boolean): Design {
-  const base: El = {
+function baseEl(): El {
+  return {
     visible: true,
     x: 0.09,
     y: 0.1,
     w: 0.82,
     size: 1,
+    rotation: 0,
+    opacity: 1,
     align: "left",
+    font: "",
+    bold: false,
+    italic: false,
+    upper: false,
+    spacing: 0,
     color: "",
+    labelColor: "",
     showLabel: true,
     label: "",
+    strokeW: 0,
+    strokeColor: "#000000",
+    shadowBlur: 0,
+    shadowColor: "#000000",
+    songStyle: "card",
+    fill: "",
   };
+}
+
+function defaultDesign(content: Content, hasLyric: boolean): Design {
+  const base = baseEl();
   const d: Design = {
     ratio: "story",
     bgMode: "gen",
     palette: 0,
     seed: 1,
+    bgA: "#a9dcea",
+    bgB: "#6db3d8",
+    bgAngle: 135,
+    bgDeco: true,
     overlay: 0.15,
-    font: "script",
+    overlayColor: "",
+    font: "dancing",
     color: PALETTES[0].text,
     title: content.song ? "Menfess Songs" : "Menfess",
     els: {
@@ -527,22 +812,114 @@ function defaultDesign(content: Content, hasLyric: boolean): Design {
   return autoLayout(d, content);
 }
 
-/** Gabungkan template lama/baru dengan nilai bawaan supaya tidak ada field yang hilang. */
-function mergeDesign(saved: Design, fallback: Design): Design {
+/* ── validasi (template dari file/HP lain TIDAK dipercaya) ── */
+
+const num = (v: unknown, min: number, max: number, def: number) =>
+  typeof v === "number" && Number.isFinite(v) ? clamp(v, min, max) : def;
+const colReq = (v: unknown, def: string) => (typeof v === "string" && HEX.test(v) ? v : def);
+const colAuto = (v: unknown, def: string) =>
+  typeof v === "string" && (v === "" || HEX.test(v)) ? v : def;
+const bool = (v: unknown, def: boolean) => (typeof v === "boolean" ? v : def);
+const text = (v: unknown, max: number, def: string) =>
+  typeof v === "string" ? Array.from(v).slice(0, max).join("") : def;
+function pick<T extends string>(v: unknown, list: readonly T[], def: T): T {
+  return typeof v === "string" && (list as readonly string[]).includes(v) ? (v as T) : def;
+}
+
+function sanitizeEl(raw: unknown, def: El): El {
+  const r = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
   return {
-    ...fallback,
-    ...saved,
-    els: Object.fromEntries(
-      EL_IDS.map((id) => [id, { ...fallback.els[id], ...(saved.els?.[id] ?? {}) }])
-    ) as Record<ElId, El>,
+    visible: bool(r.visible, def.visible),
+    x: num(r.x, -1, 2, def.x),
+    y: num(r.y, -1, 2, def.y),
+    w: num(r.w, 0.1, 1.2, def.w),
+    size: num(r.size, 0.2, 4, def.size),
+    rotation: num(r.rotation, -180, 180, def.rotation),
+    opacity: num(r.opacity, 0.05, 1, def.opacity),
+    align: pick(r.align, ["left", "center", "right"] as const, def.align),
+    font: typeof r.font === "string" && (r.font === "" || FONT_IDS.includes(r.font)) ? r.font : def.font,
+    bold: bool(r.bold, def.bold),
+    italic: bool(r.italic, def.italic),
+    upper: bool(r.upper, def.upper),
+    spacing: num(r.spacing, 0, 40, def.spacing),
+    color: colAuto(r.color, def.color),
+    labelColor: colAuto(r.labelColor, def.labelColor),
+    showLabel: bool(r.showLabel, def.showLabel),
+    label: text(r.label, 20, def.label),
+    strokeW: num(r.strokeW, 0, 24, def.strokeW),
+    strokeColor: colReq(r.strokeColor, def.strokeColor),
+    shadowBlur: num(r.shadowBlur, 0, 60, def.shadowBlur),
+    shadowColor: colReq(r.shadowColor, def.shadowColor),
+    songStyle: pick(r.songStyle, ["cover", "pill", "card", "cassette", "text"] as const, def.songStyle),
+    fill: colAuto(r.fill, def.fill),
   };
 }
 
-/* ───────────── penyimpanan template (IndexedDB, hanya di perangkat ini) ───────────── */
+function sanitizeDesign(raw: unknown, fb: Design): Design {
+  const r = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  const els = (r.els && typeof r.els === "object" ? r.els : {}) as Record<string, unknown>;
+  return {
+    ratio: pick(r.ratio, ["story", "post", "square"] as const, fb.ratio),
+    bgMode: pick(r.bgMode, ["gen", "custom", "image"] as const, fb.bgMode),
+    palette: Math.round(num(r.palette, 0, PALETTES.length - 1, fb.palette)),
+    seed: Math.round(num(r.seed, 0, 100000, fb.seed)),
+    bgA: colReq(r.bgA, fb.bgA),
+    bgB: colReq(r.bgB, fb.bgB),
+    bgAngle: num(r.bgAngle, 0, 360, fb.bgAngle),
+    bgDeco: bool(r.bgDeco, fb.bgDeco),
+    overlay: num(r.overlay, 0, 0.9, fb.overlay),
+    overlayColor: colAuto(r.overlayColor, fb.overlayColor),
+    font: pick(r.font, FONT_IDS, fb.font),
+    color: colReq(r.color, fb.color),
+    title: text(r.title, 40, fb.title),
+    els: Object.fromEntries(EL_IDS.map((id) => [id, sanitizeEl(els[id], fb.els[id])])) as Record<ElId, El>,
+  };
+}
+
+/* ───────────── file template & penyimpanan ───────────── */
+
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const fr = new FileReader();
+    fr.onload = () => resolve(String(fr.result));
+    fr.onerror = () => reject(fr.error);
+    fr.readAsDataURL(blob);
+  });
+}
+
+function dataUrlToBlob(url: string): Blob | null {
+  const m = /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/.exec(url);
+  if (!m) return null;
+  try {
+    const bin = atob(m[2]);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return new Blob([bytes], { type: m[1] });
+  } catch {
+    return null;
+  }
+}
+
+async function shrinkImage(blob: Blob, maxEdge: number, quality: number): Promise<Blob> {
+  const url = URL.createObjectURL(blob);
+  try {
+    const img = await loadImg(url);
+    const k = Math.min(1, maxEdge / Math.max(img.naturalWidth, img.naturalHeight));
+    const c = document.createElement("canvas");
+    c.width = Math.max(1, Math.round(img.naturalWidth * k));
+    c.height = Math.max(1, Math.round(img.naturalHeight * k));
+    c.getContext("2d")?.drawImage(img, 0, 0, c.width, c.height);
+    const out = await new Promise<Blob | null>((res) => c.toBlob(res, "image/jpeg", quality));
+    return out ?? blob;
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
 
 const DB_NAME = "confess-studio";
 const STORE = "templates";
 const LAST_KEY = "studio:lastTemplate";
+const MAX_IMPORT_BYTES = 10 * 1024 * 1024;
 
 function openDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -555,10 +932,7 @@ function openDb(): Promise<IDBDatabase> {
   });
 }
 
-async function dbRun<T>(
-  mode: IDBTransactionMode,
-  fn: (store: IDBObjectStore) => IDBRequest<T>
-): Promise<T> {
+async function dbRun<T>(mode: IDBTransactionMode, fn: (store: IDBObjectStore) => IDBRequest<T>): Promise<T> {
   const db = await openDb();
   return new Promise<T>((resolve, reject) => {
     const tx = db.transaction(STORE, mode);
@@ -622,6 +996,7 @@ function Range({
   max,
   step,
   onChange,
+  suffix = "",
 }: {
   label: string;
   value: number;
@@ -629,10 +1004,17 @@ function Range({
   max: number;
   step: number;
   onChange: (v: number) => void;
+  suffix?: string;
 }) {
   return (
     <label className="block text-xs text-muted">
-      {label}
+      <span className="flex justify-between">
+        <span>{label}</span>
+        <span>
+          {Math.round(value * 100) / 100}
+          {suffix}
+        </span>
+      </span>
       <input
         type="range"
         min={min}
@@ -646,44 +1028,112 @@ function Range({
   );
 }
 
+function Toggle({ label, checked, onChange }: { label: string; checked: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <button
+      type="button"
+      aria-pressed={checked}
+      onClick={() => onChange(!checked)}
+      className={`focus-ring rounded-lg border px-2.5 py-1.5 text-xs font-semibold ${
+        checked ? "border-primary bg-primary/15 text-primary" : "border-hairline text-muted hover:text-ink"
+      }`}
+    >
+      {label}
+    </button>
+  );
+}
+
+function ColorField({
+  label,
+  value,
+  onChange,
+  fallback,
+  auto = false,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  fallback: string;
+  auto?: boolean;
+}) {
+  const shown = HEX.test(value) ? value : fallback;
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center justify-between">
+        <span className="text-xs text-muted">{label}</span>
+        {auto && value && (
+          <button type="button" onClick={() => onChange("")} className="text-[11px] font-semibold text-primary">
+            Otomatis
+          </button>
+        )}
+      </div>
+      <div className="flex flex-wrap items-center gap-1.5">
+        {SWATCHES.map((c) => (
+          <button
+            key={c}
+            type="button"
+            aria-label={`${label} ${c}`}
+            onClick={() => onChange(c)}
+            style={{ background: c }}
+            className={`h-6 w-6 rounded-full ${
+              HEX.test(value) && shown.toLowerCase() === c ? "border-2 border-primary" : "border border-hairline"
+            }`}
+          />
+        ))}
+        <input
+          type="color"
+          aria-label={`${label} kustom`}
+          value={shown}
+          onChange={(e) => onChange(e.target.value)}
+          className="h-7 w-9 cursor-pointer rounded border border-hairline bg-transparent"
+        />
+      </div>
+    </div>
+  );
+}
+
+function Group({ title, children, open = false }: { title: string; children: ReactNode; open?: boolean }) {
+  return (
+    <details open={open} className="rounded-lg border border-hairline">
+      <summary className="cursor-pointer select-none px-3 py-2 text-xs font-semibold text-ink">{title}</summary>
+      <div className="space-y-3 px-3 pb-3 pt-1">{children}</div>
+    </details>
+  );
+}
+
 /* ───────────── studio ───────────── */
 
 function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }) {
-  const [content, setContent] = useState<Content>(() => ({
+  const initialContent: Content = {
     to: data.toName ?? "",
     from: data.fromName || "Anonim",
     message: data.message,
     lyric: data.songLyric ?? "",
     song: data.song ?? null,
-  }));
-  const [design, setDesign] = useState<Design>(() =>
-    defaultDesign(
-      {
-        to: data.toName ?? "",
-        from: data.fromName || "Anonim",
-        message: data.message,
-        lyric: data.songLyric ?? "",
-        song: data.song ?? null,
-      },
-      Boolean(data.songLyric)
-    )
-  );
+  };
+  const [content, setContent] = useState<Content>(initialContent);
+  const [design, setDesign] = useState<Design>(() => defaultDesign(initialContent, Boolean(data.songLyric)));
   const [selected, setSelected] = useState<ElId | null>("message");
   const [snapX, setSnapX] = useState(false);
+  const [fontTick, setFontTick] = useState(0);
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const boxesRef = useRef<Boxes>({});
   const designRef = useRef(design);
   designRef.current = design;
   const dragRef = useRef<{ id: ElId; dx: number; dy: number } | null>(null);
+  const pointers = useRef(new Map<number, { x: number; y: number }>());
+  const pinchRef = useRef<{ id: ElId; d0: number; a0: number; size0: number; rot0: number } | null>(null);
   const touched = useRef(false);
   const bgUrlRef = useRef<string | null>(null);
 
   const [bgImg, setBgImg] = useState<HTMLImageElement | null>(null);
   const [bgBlob, setBgBlob] = useState<Blob | null>(null);
   const [cover, setCover] = useState<HTMLImageElement | null>(null);
+  const [accent, setAccent] = useState("#a9b04a");
   const [drag, setDrag] = useState(false);
   const [error, setError] = useState("");
+  const [info, setInfo] = useState("");
   const [canShare, setCanShare] = useState(false);
 
   const [templates, setTemplates] = useState<Template[]>([]);
@@ -697,11 +1147,25 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
   const setEl = (id: ElId, patch: Partial<El>) =>
     setDesign((p) => ({ ...p, els: { ...p.els, [id]: { ...p.els[id], ...patch } } }));
   const setC = (patch: Partial<Content>) => setContent((p) => ({ ...p, ...patch }));
+  const relayoutIfFresh = (next: Design) => (touched.current ? next : autoLayout(next, content));
 
-  /** Susun ulang otomatis hanya bila pengguna belum mengatur posisi manual. */
-  function relayoutIfFresh(next: Design, nextContent: Content = content): Design {
-    return touched.current ? next : autoLayout(next, nextContent);
-  }
+  /* font Google: muat saat dibuka, gambar ulang setelah siap */
+  useEffect(() => {
+    ensureFontLinks();
+    const bump = () => setFontTick((n) => n + 1);
+    document.fonts?.addEventListener("loadingdone", bump);
+    return () => document.fonts?.removeEventListener("loadingdone", bump);
+  }, []);
+
+  const usedFonts = [design.font, ...EL_IDS.map((id) => design.els[id].font)].filter(Boolean).join("|");
+  useEffect(() => {
+    for (const id of new Set(usedFonts.split("|"))) {
+      const f = FONTS.find((x) => x.id === id);
+      if (!f?.g) continue;
+      void document.fonts?.load(`40px ${f.css}`).catch(() => undefined);
+      void document.fonts?.load(`700 40px ${f.css}`).catch(() => undefined);
+    }
+  }, [usedFonts]);
 
   /* cover lewat route kita sendiri agar kanvas bisa diekspor */
   useEffect(() => {
@@ -712,7 +1176,9 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
     let cancelled = false;
     loadImg(`/api/songs/cover?id=${encodeURIComponent(song.id)}`)
       .then((img) => {
-        if (!cancelled) setCover(img);
+        if (cancelled) return;
+        setCover(img);
+        setAccent(averageColor(img));
       })
       .catch(() => {
         if (!cancelled) setCover(null);
@@ -724,7 +1190,7 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
 
   useEffect(() => {
     try {
-      const f = new File([new Blob(["x"])], "a.png", { type: "image/png" });
+      const f = new File([new Blob(["x"])], "a.json", { type: "application/json" });
       setCanShare(Boolean(navigator.canShare?.({ files: [f] })));
     } catch {
       setCanShare(false);
@@ -749,8 +1215,8 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    boxesRef.current = renderCard(canvas, design, content, bgImg, cover, { selected, snapX });
-  }, [design, content, bgImg, cover, selected, snapX]);
+    boxesRef.current = renderCard(canvas, design, content, bgImg, cover, accent, { selected, snapX });
+  }, [design, content, bgImg, cover, accent, selected, snapX, fontTick]);
 
   /* template tersimpan: muat daftar, lalu pakai template terakhir */
   useEffect(() => {
@@ -778,7 +1244,7 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /* ── latar ── */
+  /* ── latar foto ── */
   async function loadFile(file: File) {
     setError("");
     if (!file.type.startsWith("image/")) {
@@ -790,25 +1256,15 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
       return;
     }
     try {
-      // Perkecil dulu (maks 2200px) agar ringan dan hemat penyimpanan template.
-      const srcUrl = URL.createObjectURL(file);
-      const raw = await loadImg(srcUrl);
-      const k = Math.min(1, 2200 / Math.max(raw.naturalWidth, raw.naturalHeight));
-      const c = document.createElement("canvas");
-      c.width = Math.max(1, Math.round(raw.naturalWidth * k));
-      c.height = Math.max(1, Math.round(raw.naturalHeight * k));
-      c.getContext("2d")?.drawImage(raw, 0, 0, c.width, c.height);
-      URL.revokeObjectURL(srcUrl);
-      const blob = await new Promise<Blob | null>((res) => c.toBlob(res, "image/jpeg", 0.9));
-      if (!blob) throw new Error("blob");
-      await applyBackground(blob);
+      const blob = await shrinkImage(file, 2200, 0.9);
+      await setBackground(blob);
       setD({ bgMode: "image" });
     } catch {
       setError("Gambar tidak bisa dibaca.");
     }
   }
 
-  async function applyBackground(blob: Blob | null) {
+  async function setBackground(blob: Blob | null) {
     if (bgUrlRef.current) {
       URL.revokeObjectURL(bgUrlRef.current);
       bgUrlRef.current = null;
@@ -828,19 +1284,11 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
   /* ── template ── */
   async function applyTemplate(t: Template, silent = false) {
     try {
-      await applyBackground(t.bg);
-      const base = defaultDesign(
-        {
-          to: data.toName ?? "",
-          from: data.fromName || "Anonim",
-          message: data.message,
-          lyric: data.songLyric ?? "",
-          song: data.song ?? null,
-        },
-        Boolean(data.songLyric)
-      );
-      setDesign(mergeDesign({ ...t.design, bgMode: t.bg ? "image" : t.design.bgMode }, base));
-      touched.current = true; // tata letak template dihormati, tidak disusun ulang otomatis
+      await setBackground(t.bg);
+      const base = defaultDesign(initialContent, Boolean(data.songLyric));
+      const merged = sanitizeDesign(t.design, base);
+      setDesign({ ...merged, bgMode: merged.bgMode === "image" && !t.bg ? "gen" : merged.bgMode });
+      touched.current = true; // tata letak template dihormati
       setActiveId(t.id);
       try {
         localStorage.setItem(LAST_KEY, t.id);
@@ -852,10 +1300,10 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
     }
   }
 
-  function makeThumb(): string {
+  function makeThumb(d: Design, bg: HTMLImageElement | null): string {
     try {
       const full = document.createElement("canvas");
-      renderCard(full, designRef.current, content, bgImg, cover, null);
+      renderCard(full, d, content, bg, cover, accent, null);
       const t = document.createElement("canvas");
       t.width = 160;
       t.height = Math.round((160 * full.height) / full.width);
@@ -868,22 +1316,25 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
 
   async function saveTemplate(asNew: boolean) {
     setError("");
+    setInfo("");
     setTplBusy(true);
     try {
       const existing = !asNew ? templates.find((t) => t.id === activeId) : undefined;
       const id = existing?.id ?? `t${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+      const d = JSON.parse(JSON.stringify(designRef.current)) as Design;
       const t: Template = {
         id,
         name: existing?.name ?? (tplName.trim().slice(0, 30) || `Template ${templates.length + 1}`),
         updatedAt: Date.now(),
-        design: JSON.parse(JSON.stringify(designRef.current)) as Design,
-        bg: designRef.current.bgMode === "image" ? bgBlob : null,
-        thumb: makeThumb(),
+        design: d,
+        bg: d.bgMode === "image" ? bgBlob : null,
+        thumb: makeThumb(d, bgImg),
       };
       await dbRun("readwrite", (s) => s.put(t));
       setTemplates(await listTemplates());
       setActiveId(id);
       setTplName("");
+      setInfo("Template tersimpan di HP ini.");
       try {
         localStorage.setItem(LAST_KEY, id);
       } catch {
@@ -914,12 +1365,85 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
     }
   }
 
-  /* ── ekspor ── */
+  async function shareTemplate(t: Template) {
+    setError("");
+    setInfo("");
+    try {
+      const bg = t.bg ? await blobToDataUrl(await shrinkImage(t.bg, 1600, 0.85)) : null;
+      const payload: TemplateFile = { app: "confess-template", v: 1, name: t.name, design: t.design, bg };
+      const slug = t.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "template";
+      const file = new File([JSON.stringify(payload)], `${slug}.confesstpl.json`, { type: "application/json" });
+      if (navigator.canShare?.({ files: [file] })) {
+        try {
+          await navigator.share({ files: [file], title: t.name });
+          return;
+        } catch (e) {
+          if ((e as { name?: string }).name === "AbortError") return;
+        }
+      }
+      const url = URL.createObjectURL(file);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = file.name;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setInfo("File template diunduh. Kirim file itu ke HP lain, lalu pakai Impor.");
+    } catch {
+      setError("Template tidak bisa dibagikan.");
+    }
+  }
+
+  async function importTemplate(file: File) {
+    setError("");
+    setInfo("");
+    if (file.size > MAX_IMPORT_BYTES) {
+      setError("File template terlalu besar.");
+      return;
+    }
+    try {
+      const obj = JSON.parse(await file.text()) as Partial<TemplateFile>;
+      if (obj?.app !== "confess-template" || obj.v !== 1) throw new Error("format");
+      const base = defaultDesign(initialContent, Boolean(data.songLyric));
+      const design = sanitizeDesign(obj.design, base);
+      let bg: Blob | null = null;
+      if (typeof obj.bg === "string" && obj.bg.length <= MAX_IMPORT_BYTES * 1.4) bg = dataUrlToBlob(obj.bg);
+      if (design.bgMode === "image" && !bg) design.bgMode = "gen";
+      let thumb = "";
+      if (bg) {
+        const url = URL.createObjectURL(bg);
+        try {
+          thumb = makeThumb(design, await loadImg(url));
+        } finally {
+          URL.revokeObjectURL(url);
+        }
+      } else {
+        thumb = makeThumb(design, null);
+      }
+      const t: Template = {
+        id: `t${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
+        name: text(obj.name, 30, "Template impor").trim() || "Template impor",
+        updatedAt: Date.now(),
+        design,
+        bg,
+        thumb,
+      };
+      await dbRun("readwrite", (s) => s.put(t));
+      setTemplates(await listTemplates());
+      await applyTemplate(t);
+      setInfo(`Template "${t.name}" berhasil diimpor.`);
+    } catch {
+      setError("File template tidak valid.");
+    }
+  }
+
+  /* ── ekspor gambar ── */
   function toBlob(): Promise<Blob | null> {
     return new Promise((resolve) => {
       try {
         const c = document.createElement("canvas");
-        renderCard(c, designRef.current, content, bgImg, cover, null);
+        renderCard(c, designRef.current, content, bgImg, cover, accent, null);
         c.toBlob((b) => resolve(b), "image/png");
       } catch {
         resolve(null);
@@ -943,7 +1467,7 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
-  async function share() {
+  async function shareImage() {
     const blob = await toBlob();
     if (!blob) {
       setError("Gagal membuat gambar.");
@@ -956,7 +1480,7 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
     }
   }
 
-  /* ── geser elemen di kanvas ── */
+  /* ── geser, putar, dan cubit elemen di kanvas ── */
   function toCanvasPoint(e: React.PointerEvent<HTMLCanvasElement>) {
     const canvas = e.currentTarget;
     const rect = canvas.getBoundingClientRect();
@@ -966,12 +1490,39 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
     };
   }
 
+  function inBox(b: Box, p: { x: number; y: number }) {
+    const dx = p.x - (b.x + b.w / 2);
+    const dy = p.y - (b.y + b.h / 2);
+    const cos = Math.cos(-b.rot);
+    const sin = Math.sin(-b.rot);
+    const lx = dx * cos - dy * sin;
+    const ly = dx * sin + dy * cos;
+    return Math.abs(lx) <= b.w / 2 + 20 && Math.abs(ly) <= b.h / 2 + 20;
+  }
+
   function onPointerDown(e: React.PointerEvent<HTMLCanvasElement>) {
     const p = toCanvasPoint(e);
-    const order = [...EL_IDS].reverse(); // yang paling atas dicek lebih dulu
-    const hit = order.find((id) => {
+    pointers.current.set(e.pointerId, p);
+    e.currentTarget.setPointerCapture(e.pointerId);
+    if (pointers.current.size === 2) {
+      const target = selected;
+      if (target) {
+        const [a, b] = Array.from(pointers.current.values());
+        const el = designRef.current.els[target];
+        pinchRef.current = {
+          id: target,
+          d0: Math.hypot(a.x - b.x, a.y - b.y) || 1,
+          a0: Math.atan2(b.y - a.y, b.x - a.x),
+          size0: el.size,
+          rot0: el.rotation,
+        };
+        dragRef.current = null;
+      }
+      return;
+    }
+    const hit = [...EL_IDS].reverse().find((id) => {
       const b = boxesRef.current[id];
-      return b && p.x >= b.x - 20 && p.x <= b.x + b.w + 20 && p.y >= b.y - 20 && p.y <= b.y + b.h + 20;
+      return b && inBox(b, p);
     });
     if (!hit) {
       setSelected(null);
@@ -980,15 +1531,27 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
     const b = boxesRef.current[hit] as Box;
     setSelected(hit);
     dragRef.current = { id: hit, dx: p.x - b.x, dy: p.y - b.y };
-    e.currentTarget.setPointerCapture(e.pointerId);
   }
 
   function onPointerMove(e: React.PointerEvent<HTMLCanvasElement>) {
+    if (!pointers.current.has(e.pointerId)) return;
+    const p = toCanvasPoint(e);
+    pointers.current.set(e.pointerId, p);
+    const pr = pinchRef.current;
+    if (pr && pointers.current.size >= 2) {
+      const [a, b] = Array.from(pointers.current.values());
+      const dist = Math.hypot(a.x - b.x, a.y - b.y) || 1;
+      const ang = Math.atan2(b.y - a.y, b.x - a.x);
+      let rot = normDeg(pr.rot0 + ((ang - pr.a0) * 180) / Math.PI);
+      if (Math.abs(rot) < 3) rot = 0;
+      touched.current = true;
+      setEl(pr.id, { size: clamp((pr.size0 * dist) / pr.d0, 0.3, 3), rotation: Math.round(rot) });
+      return;
+    }
     const dr = dragRef.current;
     if (!dr) return;
     const { w: W, h: H } = SIZES[designRef.current.ratio];
     const el = designRef.current.els[dr.id];
-    const p = toCanvasPoint(e);
     let nx = (p.x - dr.dx) / W;
     const ny = (p.y - dr.dy) / H;
     const snapped = Math.abs(nx + el.w / 2 - 0.5) < 0.015;
@@ -996,14 +1559,18 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
     setSnapX(snapped);
     touched.current = true;
     setEl(dr.id, {
-      x: Math.min(1 - el.w / 2, Math.max(-el.w / 2, nx)),
-      y: Math.min(0.98, Math.max(-0.02, ny)),
+      x: clamp(nx, -el.w / 2, 1 - el.w / 2),
+      y: clamp(ny, -0.02, 0.98),
     });
   }
 
-  function endDrag() {
-    dragRef.current = null;
-    setSnapX(false);
+  function onPointerEnd(e: React.PointerEvent<HTMLCanvasElement>) {
+    pointers.current.delete(e.pointerId);
+    if (pointers.current.size < 2) pinchRef.current = null;
+    if (pointers.current.size === 0) {
+      dragRef.current = null;
+      setSnapX(false);
+    }
   }
 
   function onKeyDown(e: React.KeyboardEvent<HTMLCanvasElement>) {
@@ -1037,7 +1604,7 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
     },
   };
 
-  const available = (id: ElId) => id !== "song" && id !== "lyric" ? true : Boolean(song);
+  const available = (id: ElId) => (id === "song" || id === "lyric" ? Boolean(song) : true);
   const sel = selected && available(selected) ? design.els[selected] : null;
   const active = templates.find((t) => t.id === activeId) ?? null;
 
@@ -1072,8 +1639,8 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
                 aria-label="Pratinjau kartu. Geser teks untuk memindahkan."
                 onPointerDown={onPointerDown}
                 onPointerMove={onPointerMove}
-                onPointerUp={endDrag}
-                onPointerCancel={endDrag}
+                onPointerUp={onPointerEnd}
+                onPointerCancel={onPointerEnd}
                 onKeyDown={onKeyDown}
                 className="mx-auto block rounded-lg shadow-lift outline-none focus-visible:ring-2 focus-visible:ring-primary"
                 style={{
@@ -1087,19 +1654,20 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
               />
             </div>
             <p className="text-center text-[11px] text-muted">
-              Ketuk lalu geser teks untuk memindahkan. Panah keyboard untuk geser halus.
+              Geser teks untuk memindahkan. Cubit dengan dua jari untuk memperbesar dan memutar elemen yang dipilih.
             </p>
             <div className="flex gap-2">
               <button type="button" onClick={() => void download()} className="btn-primary flex-1">
                 Unduh PNG
               </button>
               {canShare && (
-                <button type="button" onClick={() => void share()} className="btn-ghost flex-1">
+                <button type="button" onClick={() => void shareImage()} className="btn-ghost flex-1">
                   Bagikan
                 </button>
               )}
             </div>
             {error && <p className="text-xs text-warning">{error}</p>}
+            {info && <p className="text-xs text-success">{info}</p>}
           </div>
 
           {/* ── pengaturan ── */}
@@ -1123,9 +1691,7 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
                           // eslint-disable-next-line @next/next/no-img-element
                           <img src={t.thumb} alt={t.name} className="block h-28 w-full object-cover" />
                         ) : (
-                          <span className="grid h-28 place-items-center text-xs text-muted">
-                            {t.name}
-                          </span>
+                          <span className="grid h-28 place-items-center text-xs text-muted">{t.name}</span>
                         )}
                       </button>
                       <div className="mt-1 flex items-center justify-between gap-1">
@@ -1171,78 +1737,110 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
                   Simpan baru
                 </button>
               </div>
+              <div className="flex flex-wrap gap-2">
+                {active && (
+                  <button
+                    type="button"
+                    onClick={() => void shareTemplate(active)}
+                    className="btn-ghost px-3 py-1.5 text-xs"
+                  >
+                    Bagikan template
+                  </button>
+                )}
+                <label className="btn-ghost cursor-pointer px-3 py-1.5 text-xs">
+                  Impor template
+                  <input
+                    type="file"
+                    accept=".json,application/json"
+                    className="sr-only"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) void importTemplate(f);
+                      e.target.value = "";
+                    }}
+                  />
+                </label>
+              </div>
               <p className="text-[11px] text-muted">
-                Menyimpan latar foto, posisi, ukuran, dan semua pengaturan. Template terakhir
-                dipakai otomatis dan hanya ada di perangkat ini.
+                Menyimpan latar foto, posisi, ukuran, gaya, dan warna. Tersimpan di perangkat ini saja. Untuk
+                HP lain: Bagikan template, kirim filenya, lalu Impor di sana.
               </p>
             </section>
 
             <section className="space-y-2">
               <p className="label">Latar</p>
-              <div className="flex flex-wrap items-center gap-2">
-                {PALETTES.map((p, i) => (
+              <Seg
+                label="Jenis latar"
+                value={design.bgMode}
+                onChange={(v) => setD({ bgMode: v })}
+                options={[
+                  { id: "gen", label: "Tema" },
+                  { id: "custom", label: "Warna" },
+                  { id: "image", label: "Foto" },
+                ]}
+              />
+              {design.bgMode === "gen" && (
+                <div className="flex flex-wrap items-center gap-2">
+                  {PALETTES.map((p, i) => (
+                    <button
+                      key={p.name}
+                      type="button"
+                      title={p.name}
+                      aria-label={`Tema ${p.name}`}
+                      aria-pressed={design.palette === i}
+                      onClick={() => setD({ palette: i, color: p.text })}
+                      style={{
+                        background: `linear-gradient(135deg, ${p.stops[0]}, ${p.stops[1]}, ${p.stops[2]})`,
+                      }}
+                      className={`focus-ring h-9 w-9 rounded-full border-2 ${
+                        design.palette === i ? "border-primary" : "border-hairline"
+                      }`}
+                    />
+                  ))}
                   <button
-                    key={p.name}
                     type="button"
-                    title={p.name}
-                    aria-label={`Latar ${p.name}`}
-                    aria-pressed={design.bgMode === "gen" && design.palette === i}
-                    onClick={() => setD({ bgMode: "gen", palette: i, color: p.text })}
-                    style={{
-                      background: `linear-gradient(135deg, ${p.stops[0]}, ${p.stops[1]}, ${p.stops[2]})`,
-                    }}
-                    className={`focus-ring h-9 w-9 rounded-full border-2 ${
-                      design.bgMode === "gen" && design.palette === i
-                        ? "border-primary"
-                        : "border-hairline"
-                    }`}
-                  />
-                ))}
-                <button
-                  type="button"
-                  onClick={() => setD({ bgMode: "gen", seed: design.seed + 1 })}
-                  className="btn-ghost px-3 py-1.5 text-xs"
-                >
-                  Acak
-                </button>
-              </div>
-              <label
-                className={`flex cursor-pointer items-center justify-center rounded-xl border-2 border-dashed p-4 text-center text-xs text-muted ${
-                  drag ? "border-primary bg-primary/10" : "border-hairline"
-                }`}
-              >
-                <input
-                  type="file"
-                  accept="image/*"
-                  className="sr-only"
-                  onChange={(e) => {
-                    const f = e.target.files?.[0];
-                    if (f) void loadFile(f);
-                    e.target.value = "";
-                  }}
-                />
-                {bgImg && design.bgMode === "image"
-                  ? "Ganti foto (seret atau ketuk)"
-                  : "Seret foto ke sini atau ketuk untuk pilih"}
-              </label>
-              {bgImg && design.bgMode === "gen" && (
-                <button
-                  type="button"
-                  onClick={() => setD({ bgMode: "image" })}
-                  className="text-xs font-semibold text-primary"
-                >
-                  Pakai foto tadi
-                </button>
+                    onClick={() => setD({ seed: design.seed + 1 })}
+                    className="btn-ghost px-3 py-1.5 text-xs"
+                  >
+                    Acak
+                  </button>
+                </div>
+              )}
+              {design.bgMode === "custom" && (
+                <div className="space-y-3">
+                  <ColorField label="Warna awal" value={design.bgA} fallback="#a9dcea" onChange={(v) => setD({ bgA: v })} />
+                  <ColorField label="Warna akhir" value={design.bgB} fallback="#6db3d8" onChange={(v) => setD({ bgB: v })} />
+                  <Range label="Arah gradasi" value={design.bgAngle} min={0} max={360} step={5} suffix="°" onChange={(v) => setD({ bgAngle: v })} />
+                  <div className="flex items-center gap-2">
+                    <Toggle label="Gelembung" checked={design.bgDeco} onChange={(v) => setD({ bgDeco: v })} />
+                    <button type="button" onClick={() => setD({ seed: design.seed + 1 })} className="btn-ghost px-3 py-1.5 text-xs">
+                      Acak
+                    </button>
+                  </div>
+                </div>
               )}
               {design.bgMode === "image" && (
-                <Range
-                  label="Penutup latar"
-                  value={design.overlay}
-                  min={0}
-                  max={0.8}
-                  step={0.05}
-                  onChange={(v) => setD({ overlay: v })}
-                />
+                <div className="space-y-3">
+                  <label
+                    className={`flex cursor-pointer items-center justify-center rounded-xl border-2 border-dashed p-4 text-center text-xs text-muted ${
+                      drag ? "border-primary bg-primary/10" : "border-hairline"
+                    }`}
+                  >
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="sr-only"
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        if (f) void loadFile(f);
+                        e.target.value = "";
+                      }}
+                    />
+                    {bgImg ? "Ganti foto (seret atau ketuk)" : "Seret foto ke sini atau ketuk untuk pilih"}
+                  </label>
+                  <Range label="Kekuatan penutup" value={design.overlay} min={0} max={0.9} step={0.05} onChange={(v) => setD({ overlay: v })} />
+                  <ColorField label="Warna penutup" value={design.overlayColor} fallback="#000000" auto onChange={(v) => setD({ overlayColor: v })} />
+                </div>
               )}
             </section>
 
@@ -1341,74 +1939,112 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
               </ul>
 
               {selected && sel && (
-                <div className="space-y-3 rounded-xl border border-hairline bg-surface p-3">
+                <div className="space-y-2 rounded-xl border border-hairline bg-surface p-3">
                   <p className="text-xs font-semibold text-ink">Atur: {EL_NAMES[selected]}</p>
-                  {HAS_LABEL[selected] && (
-                    <div className="flex items-center gap-2">
-                      <label className="flex items-center gap-1.5 text-xs text-muted">
-                        <input
-                          type="checkbox"
-                          checked={sel.showLabel}
-                          onChange={(e) => setEl(selected, { showLabel: e.target.checked })}
-                        />
-                        Label
-                      </label>
-                      <input
-                        value={sel.label}
-                        onChange={(e) => setEl(selected, { label: e.target.value })}
-                        maxLength={20}
-                        disabled={!sel.showLabel}
-                        aria-label="Teks label"
-                        className="input min-w-0 flex-1 py-1.5 text-xs"
+
+                  {selected === "song" && (
+                    <div className="space-y-2">
+                      <p className="text-xs text-muted">Gaya preview lagu</p>
+                      <Seg
+                        label="Gaya preview lagu"
+                        value={sel.songStyle}
+                        onChange={(v) => setEl(selected, { songStyle: v })}
+                        options={SONG_STYLES}
                       />
                     </div>
                   )}
-                  <Range
-                    label="Ukuran"
-                    value={sel.size}
-                    min={0.4}
-                    max={2.5}
-                    step={0.05}
-                    onChange={(v) => setEl(selected, { size: v })}
-                  />
-                  <Range
-                    label="Lebar kotak teks"
-                    value={sel.w}
-                    min={0.2}
-                    max={1}
-                    step={0.02}
-                    onChange={(v) => setEl(selected, { w: v })}
-                  />
-                  <Seg
-                    label="Rata teks"
-                    value={sel.align}
-                    onChange={(v) => setEl(selected, { align: v })}
-                    options={[
-                      { id: "left", label: "Kiri" },
-                      { id: "center", label: "Tengah" },
-                      { id: "right", label: "Kanan" },
-                    ]}
-                  />
-                  <div className="flex items-center gap-3">
-                    <label className="flex items-center gap-2 text-xs text-muted">
-                      Warna
-                      <input
-                        type="color"
-                        value={sel.color || design.color}
-                        onChange={(e) => setEl(selected, { color: e.target.value })}
-                        className="h-8 w-10 cursor-pointer rounded border border-hairline bg-transparent"
-                      />
-                    </label>
-                    {sel.color && (
-                      <button
-                        type="button"
-                        onClick={() => setEl(selected, { color: "" })}
-                        className="text-xs font-semibold text-primary"
+
+                  <Group title="Posisi & ukuran" open>
+                    <Range label="Ukuran" value={sel.size} min={0.3} max={3} step={0.05} onChange={(v) => setEl(selected, { size: v })} />
+                    <Range label="Lebar kotak" value={sel.w} min={0.2} max={1.2} step={0.02} onChange={(v) => setEl(selected, { w: v })} />
+                    <Range label="Putar" value={sel.rotation} min={-180} max={180} step={1} suffix="°" onChange={(v) => setEl(selected, { rotation: v })} />
+                    <Range label="Transparansi" value={sel.opacity} min={0.1} max={1} step={0.05} onChange={(v) => setEl(selected, { opacity: v })} />
+                    <Seg
+                      label="Rata teks"
+                      value={sel.align}
+                      onChange={(v) => setEl(selected, { align: v })}
+                      options={[
+                        { id: "left", label: "Kiri" },
+                        { id: "center", label: "Tengah" },
+                        { id: "right", label: "Kanan" },
+                      ]}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setEl(selected, { rotation: 0 })}
+                      className="text-xs font-semibold text-primary"
+                    >
+                      Luruskan (0°)
+                    </button>
+                  </Group>
+
+                  <Group title="Gaya teks">
+                    <label className="block text-xs text-muted">
+                      Font
+                      <select
+                        value={sel.font}
+                        onChange={(e) => setEl(selected, { font: e.target.value })}
+                        className="input mt-1 py-1.5 text-sm"
                       >
-                        Ikuti warna utama
-                      </button>
+                        <option value="">Ikuti font utama</option>
+                        {FONTS.map((f) => (
+                          <option key={f.id} value={f.id}>
+                            {f.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <div className="flex flex-wrap gap-1.5">
+                      <Toggle label="Tebal" checked={sel.bold} onChange={(v) => setEl(selected, { bold: v })} />
+                      <Toggle label="Miring" checked={sel.italic} onChange={(v) => setEl(selected, { italic: v })} />
+                      <Toggle label="HURUF BESAR" checked={sel.upper} onChange={(v) => setEl(selected, { upper: v })} />
+                    </div>
+                    <Range label="Jarak huruf" value={sel.spacing} min={0} max={30} step={1} suffix="px" onChange={(v) => setEl(selected, { spacing: v })} />
+                    {HAS_LABEL[selected] && (
+                      <div className="flex items-center gap-2">
+                        <label className="flex items-center gap-1.5 text-xs text-muted">
+                          <input
+                            type="checkbox"
+                            checked={sel.showLabel}
+                            onChange={(e) => setEl(selected, { showLabel: e.target.checked })}
+                          />
+                          Label
+                        </label>
+                        <input
+                          value={sel.label}
+                          onChange={(e) => setEl(selected, { label: e.target.value })}
+                          maxLength={20}
+                          disabled={!sel.showLabel}
+                          aria-label="Teks label"
+                          className="input min-w-0 flex-1 py-1.5 text-xs"
+                        />
+                      </div>
                     )}
-                  </div>
+                  </Group>
+
+                  <Group title="Warna & efek">
+                    <ColorField label="Warna teks" value={sel.color} fallback={design.color} auto onChange={(v) => setEl(selected, { color: v })} />
+                    {HAS_LABEL[selected] && (
+                      <ColorField label="Warna label" value={sel.labelColor} fallback={sel.color || design.color} auto onChange={(v) => setEl(selected, { labelColor: v })} />
+                    )}
+                    {selected === "song" && (
+                      <ColorField
+                        label={sel.songStyle === "cassette" ? "Warna aksen kaset" : "Warna kartu"}
+                        value={sel.fill}
+                        fallback={sel.songStyle === "cassette" ? accent : "#ffffff"}
+                        auto
+                        onChange={(v) => setEl(selected, { fill: v })}
+                      />
+                    )}
+                    <Range label="Garis tepi teks" value={sel.strokeW} min={0} max={20} step={1} suffix="px" onChange={(v) => setEl(selected, { strokeW: v })} />
+                    {sel.strokeW > 0 && (
+                      <ColorField label="Warna garis tepi" value={sel.strokeColor} fallback="#000000" onChange={(v) => setEl(selected, { strokeColor: v })} />
+                    )}
+                    <Range label="Bayangan" value={sel.shadowBlur} min={0} max={40} step={1} onChange={(v) => setEl(selected, { shadowBlur: v })} />
+                    {sel.shadowBlur > 0 && (
+                      <ColorField label="Warna bayangan" value={sel.shadowColor} fallback="#000000" onChange={(v) => setEl(selected, { shadowColor: v })} />
+                    )}
+                  </Group>
                 </div>
               )}
             </section>
@@ -1419,26 +2055,23 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
                 label="Ukuran kartu"
                 value={design.ratio}
                 onChange={(v) => setDesign((p) => relayoutIfFresh({ ...p, ratio: v }))}
-                options={(Object.keys(SIZES) as Ratio[]).map((id) => ({
-                  id,
-                  label: SIZES[id].label,
-                }))}
+                options={(Object.keys(SIZES) as Ratio[]).map((id) => ({ id, label: SIZES[id].label }))}
               />
-              <Seg
-                label="Font"
-                value={design.font}
-                onChange={(v) => setDesign((p) => relayoutIfFresh({ ...p, font: v }))}
-                options={FONTS.map((f) => ({ id: f.id, label: f.label }))}
-              />
-              <label className="flex items-center gap-2 text-xs text-muted">
-                Warna utama
-                <input
-                  type="color"
-                  value={design.color}
-                  onChange={(e) => setD({ color: e.target.value })}
-                  className="h-8 w-10 cursor-pointer rounded border border-hairline bg-transparent"
-                />
+              <label className="block text-xs text-muted">
+                Font utama
+                <select
+                  value={design.font}
+                  onChange={(e) => setDesign((p) => relayoutIfFresh({ ...p, font: e.target.value }))}
+                  className="input mt-1 py-1.5 text-sm"
+                >
+                  {FONTS.map((f) => (
+                    <option key={f.id} value={f.id}>
+                      {f.label}
+                    </option>
+                  ))}
+                </select>
               </label>
+              <ColorField label="Warna utama teks" value={design.color} fallback="#0b3d91" onChange={(v) => setD({ color: v })} />
             </section>
           </div>
         </div>
