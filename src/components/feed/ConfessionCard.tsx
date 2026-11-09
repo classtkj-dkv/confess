@@ -12,6 +12,7 @@ import { REPORT_REASONS } from "@/lib/categories";
 import type { Confession } from "@/types";
 import { formatNumber, formatRelativeTime } from "@/utils/format";
 import { Icon } from "@/components/ui/Icon";
+import { SongCard } from "@/components/songs/SongCard";
 
 function AnonymousAvatar({ name }: { name?: string }) {
   return (
@@ -260,6 +261,7 @@ export function ConfessionCard({
         {!compact && (
           <ReadMore message={confession.message} href={href} />
         )}
+        {confession.song && <SongCard song={confession.song} lyric={confession.songLyric} />}
       </div>
 
       <footer className="mt-4 flex items-center gap-1 border-t border-hairline pt-3">

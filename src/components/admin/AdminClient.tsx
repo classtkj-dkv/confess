@@ -913,6 +913,7 @@ function AnnouncementBase({
   const [maintenance, setMaintenance] = useState(false);
   const [allowComments, setAllowComments] = useState(true);
   const [allowConfessions, setAllowConfessions] = useState(true);
+  const [allowSongs, setAllowSongs] = useState(true);
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
 
@@ -924,8 +925,10 @@ function AnnouncementBase({
           announcement?: string;
           allowComments?: boolean;
           allowConfessions?: boolean;
+          allowSongs?: boolean;
         };
         setAllowConfessions(data.allowConfessions !== false);
+        setAllowSongs(data.allowSongs !== false);
         setAnnouncement(data.announcement ?? "");
         setMaintenance(data.maintenanceMode === true);
         setAllowComments(data.allowComments !== false);
@@ -942,6 +945,7 @@ function AnnouncementBase({
     maintenanceMode?: boolean;
     allowComments?: boolean;
     allowConfessions?: boolean;
+    allowSongs?: boolean;
   }) {
     setBusy(true);
     try {
@@ -1020,6 +1024,24 @@ function AnnouncementBase({
             label="Komentar"
           />
         </div>
+        {withMaintenance && (
+          <div className="flex items-center justify-between gap-4 p-5">
+            <div>
+              <p className="font-semibold text-ink">Izinkan lagu</p>
+              <p className="mt-0.5 text-xs text-muted">
+                Pengirim bisa menempelkan lagu (Deezer) beserta preview 30 detik.
+              </p>
+            </div>
+            <ToggleSwitch
+              checked={allowSongs}
+              onChange={(v) => {
+                setAllowSongs(v);
+                void save({ allowSongs: v });
+              }}
+              label="Lagu"
+            />
+          </div>
+        )}
         {withMaintenance && (
           <div className="flex items-center justify-between gap-4 p-5">
             <div>

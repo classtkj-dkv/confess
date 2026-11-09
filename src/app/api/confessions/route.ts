@@ -11,6 +11,7 @@ import { checkRateLimit, RATE_LIMITS } from "@/lib/security/rateLimit";
 import { isCategoryId } from "@/lib/categories";
 import { sanitizeText } from "@/lib/security/sanitize";
 import { validateConfessionInput } from "@/lib/validations";
+import { getTrack } from "@/lib/songs/deezer";
 import { getAdminSettings } from "@/lib/firebase/settings";
 
 const RECENT_WINDOW_MS = 30 * 60 * 1000;
@@ -46,7 +47,8 @@ export async function POST(req: NextRequest): Promise<Response> {
       throw new ApiError(400, "Body JSON tidak valid.");
     }
 
-    const { message, category, fromName, toName } = validateConfessionInput(raw);
+    const { message, category, fromName, toName, songId, songLyric } =
+      validateConfessionInput(raw);
 
     if (!isCategoryId(category)) {
       throw new ApiError(400, "Kategori tidak valid.");
@@ -65,6 +67,15 @@ export async function POST(req: NextRequest): Promise<Response> {
     const maxLen = settings.maxConfessionLength;
     if (Array.from(message).length > maxLen) {
       throw new ApiError(400, `Confession maksimal ${maxLen.toLocaleString("id-ID")} karakter.`);
+    }
+
+    // Lagu: data kanonik diambil ulang dari Deezer (klien tidak dipercaya).
+    let song: { id: string; title: string; artist: string; cover: string } | null = null;
+    if (songId) {
+      if (!settings.allowSongs) throw new ApiError(403, "Fitur lagu sedang dinonaktifkan.");
+      const track = await getTrack(songId);
+      if (!track) throw new ApiError(400, "Lagu tidak ditemukan. Pilih lagu lain.");
+      song = { id: track.id, title: track.title, artist: track.artist, cover: track.cover };
     }
 
     // Rate limit: dailySubmissionLimit confession per UID per hari.
@@ -120,6 +131,7 @@ export async function POST(req: NextRequest): Promise<Response> {
       category,
       ...(fromName ? { fromName } : {}),
       ...(toName ? { toName } : {}),
+      ...(song ? { song, ...(songLyric ? { songLyric } : {}) } : {}),
       authorUid: uid,
       createdAt: now,
       updatedAt: now,

@@ -4,6 +4,7 @@ import { sanitizeText } from "@/lib/security/sanitize";
 const MAX_CONFESSION_LENGTH = 1000;
 const MAX_COMMENT_LENGTH = 500;
 const MAX_NAME_LENGTH = 30;
+const MAX_LYRIC_LENGTH = 200;
 
 /** Nama opsional: satu baris, tanpa HTML, dipotong diam-diam. */
 export function cleanName(value: unknown): string {
@@ -16,6 +17,8 @@ export interface ValidatedConfessionInput {
   category: string;
   fromName: string;
   toName: string;
+  songId: string;
+  songLyric: string;
 }
 
 export function validateConfessionInput(
@@ -24,7 +27,11 @@ export function validateConfessionInput(
   if (typeof body !== "object" || body === null) {
     throw new Error("Payload tidak valid.");
   }
-  const { message, category, fromName, toName } = body as Record<string, unknown>;
+  const { message, category, fromName, toName, songId, songLyric } = body as Record<
+    string,
+    unknown
+  >;
+  const cleanSongId = typeof songId === "string" && /^\d{1,12}$/.test(songId) ? songId : "";
 
   if (typeof message !== "string" || !/[\p{L}\p{N}]/u.test(message)) {
     throw new Error("Confession tidak boleh kosong.");
@@ -41,6 +48,11 @@ export function validateConfessionInput(
     category,
     fromName: cleanName(fromName),
     toName: cleanName(toName),
+    songId: cleanSongId,
+    songLyric:
+      cleanSongId && typeof songLyric === "string"
+        ? sanitizeText(songLyric, MAX_LYRIC_LENGTH).trim()
+        : "",
   };
 }
 

@@ -51,5 +51,6 @@ export async function checkRateLimit(
 export const RATE_LIMITS = {
   confessionPerDay: { limit: 5, windowMs: 24 * 60 * 60 * 1000 },
   commentPerHour: { limit: 10, windowMs: 60 * 60 * 1000 },
+  songSearch: { limit: 60, windowMs: 10 * 60 * 1000 },
   reportPerDay: { limit: 10, windowMs: 24 * 60 * 60 * 1000 },
 } as const;

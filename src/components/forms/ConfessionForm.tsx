@@ -1,6 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { SongCard } from "@/components/songs/SongCard";
+import { SongPicker } from "@/components/songs/SongPicker";
+import type { Song } from "@/types";
 import { useRouter } from "next/navigation";
 import { ApiClientError, api } from "@/lib/api";
 import { CATEGORIES } from "@/lib/categories";
@@ -24,6 +27,8 @@ export function ConfessionForm({ defaultCategory }: { defaultCategory?: string }
   const [agree, setAgree] = useState(false);
   const [fromName, setFromName] = useState("");
   const [toName, setToName] = useState("");
+  const [song, setSong] = useState<Song | null>(null);
+  const [lyric, setLyric] = useState("");
 
   // Nama pengirim diingat di browser ini supaya tidak perlu diketik ulang.
   useEffect(() => {
@@ -55,7 +60,14 @@ export function ConfessionForm({ defaultCategory }: { defaultCategory?: string }
     setBusy(true);
     try {
       await api("/api/confessions", {
-        body: { message, category, fromName: fromName.trim(), toName: toName.trim() },
+        body: {
+          message,
+          category,
+          fromName: fromName.trim(),
+          toName: toName.trim(),
+          songId: song?.id ?? "",
+          songLyric: lyric.trim(),
+        },
       });
       try {
         if (fromName.trim()) localStorage.setItem(NAME_KEY, fromName.trim());
@@ -66,6 +78,8 @@ export function ConfessionForm({ defaultCategory }: { defaultCategory?: string }
       setStep("sent");
       setMessage("");
       setToName("");
+      setSong(null);
+      setLyric("");
       setCategory("");
       setAgree(false);
     } catch (err) {
@@ -132,6 +146,11 @@ export function ConfessionForm({ defaultCategory }: { defaultCategory?: string }
             </p>
           )}
           <p className="mt-3 whitespace-pre-line text-sm text-ink/90">{message}</p>
+          {song && (
+            <div className="mt-3">
+              <SongCard song={song} lyric={lyric.trim()} />
+            </div>
+          )}
         </article>
         <div className="flex gap-2">
           <button
@@ -208,6 +227,8 @@ export function ConfessionForm({ defaultCategory }: { defaultCategory?: string }
           className="input resize-y min-h-40"
         />
       </div>
+
+      <SongPicker song={song} lyric={lyric} onSong={setSong} onLyric={setLyric} />
 
       <div>
         <span id="cat-label" className="label">

@@ -31,6 +31,9 @@ export async function POST(req: NextRequest): Promise<Response> {
     if (typeof body.allowConfessions === "boolean") {
       patch.allowConfessions = body.allowConfessions;
     }
+    if (typeof body.allowSongs === "boolean") {
+      patch.allowSongs = body.allowSongs;
+    }
     if (typeof body.websiteName === "string" && body.websiteName.trim()) {
       patch.websiteName = sanitizeText(body.websiteName, 60);
     }

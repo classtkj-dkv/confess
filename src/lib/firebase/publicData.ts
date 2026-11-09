@@ -12,11 +12,24 @@ export function publicConfessionOf(
 ): Record<string, unknown> {
   const fromName = String(c.fromName ?? "");
   const toName = String(c.toName ?? "");
+  const s = (c.song ?? null) as Record<string, unknown> | null;
+  const songLyric = String(c.songLyric ?? "");
   return {
     id,
     message: String(c.message ?? ""),
     ...(fromName ? { fromName } : {}),
     ...(toName ? { toName } : {}),
+    ...(s && s.id
+      ? {
+          song: {
+            id: String(s.id),
+            title: String(s.title ?? ""),
+            artist: String(s.artist ?? ""),
+            cover: String(s.cover ?? ""),
+          },
+          ...(songLyric ? { songLyric } : {}),
+        }
+      : {}),
     messageLower: String(c.messageLower ?? String(c.message ?? "").toLowerCase()),
     category: String(c.category ?? "random"),
     createdAt: Number(c.createdAt ?? 0),

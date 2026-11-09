@@ -57,6 +57,16 @@ function toConfession(id: string, data: Record<string, unknown>): Confession {
     category: (data.category ?? "random") as Confession["category"],
     fromName: data.fromName ? String(data.fromName) : undefined,
     toName: data.toName ? String(data.toName) : undefined,
+    song:
+      data.song && typeof data.song === "object"
+        ? {
+            id: String((data.song as Record<string, unknown>).id ?? ""),
+            title: String((data.song as Record<string, unknown>).title ?? ""),
+            artist: String((data.song as Record<string, unknown>).artist ?? ""),
+            cover: String((data.song as Record<string, unknown>).cover ?? ""),
+          }
+        : undefined,
+    songLyric: data.songLyric ? String(data.songLyric) : undefined,
     createdAt: Number(data.createdAt ?? 0),
     status: "PUBLISHED",
     likesCount: Number(data.likesCount ?? 0),

@@ -12,6 +12,7 @@ export async function GET(): Promise<Response> {
       announcement: s.announcement,
       allowComments: s.allowComments,
       allowConfessions: s.allowConfessions,
+      allowSongs: s.allowSongs,
       websiteName: s.websiteName,
     });
   } catch {
@@ -20,6 +21,7 @@ export async function GET(): Promise<Response> {
       announcement: "",
       allowComments: true,
       allowConfessions: true,
+      allowSongs: true,
       websiteName: DEFAULT_SETTINGS.websiteName,
     });
   }

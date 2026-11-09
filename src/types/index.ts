@@ -5,6 +5,14 @@ export type ReactionType = "like";
 /** Role ladder: owner > admin > moderator > user. */
 export type UserRole = "user" | "moderator" | "admin" | "owner";
 
+export interface Song {
+  /** Id track Deezer. */
+  id: string;
+  title: string;
+  artist: string;
+  cover: string;
+}
+
 export interface Confession {
   id: string;
   message: string;
@@ -13,6 +21,10 @@ export interface Confession {
   fromName?: string;
   /** Untuk siapa pesan ini (opsional). */
   toName?: string;
+  /** Lagu (opsional) dari Deezer. */
+  song?: Song;
+  /** Kutipan lirik singkat yang ditulis pengirim (opsional). */
+  songLyric?: string;
   /** Hanya ada di data privat (staff/server); tidak pernah di data publik. */
   authorUid?: string;
   createdAt: number;
@@ -67,6 +79,7 @@ export interface AppSettings {
   announcement: string;
   allowComments: boolean;
   allowConfessions: boolean;
+  allowSongs: boolean;
   maxConfessionLength: number;
   dailySubmissionLimit: number;
 }
