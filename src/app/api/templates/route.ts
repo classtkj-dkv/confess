@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 import { getAdminRtdb } from "@/lib/firebase/admin";
 import { writeActivity } from "@/lib/security/audit";
+import { sanitizeText } from "@/lib/security/sanitize";
 import {
   ApiError,
   assertNotBlocked,
@@ -11,6 +12,7 @@ import { checkRateLimit, RATE_LIMITS } from "@/lib/security/rateLimit";
 import {
   CODE_RE,
   MAX_BG_CHARS,
+  MAX_BY_CHARS,
   MAX_DESIGN_BYTES,
   hashCode,
   newTemplateId,
@@ -41,7 +43,7 @@ export async function POST(req: NextRequest): Promise<Response> {
       throw new ApiError(400, "Data template tidak valid.");
     }
     const designJson = JSON.stringify(b.design);
-    if (designJson.length > MAX_DESIGN_BYTES) {
+    if (Buffer.byteLength(designJson, "utf8") > MAX_DESIGN_BYTES) {
       throw new ApiError(413, "Template terlalu besar.");
     }
 
@@ -66,6 +68,18 @@ export async function POST(req: NextRequest): Promise<Response> {
       throw new ApiError(400, "Kode harus tepat 4 angka.");
     }
 
+    // "by (nama)": nama pembuat. Pakai isian pengirim; kalau kosong ambil nama profil; terakhir "Anonim".
+    let by = sanitizeText(b.by, MAX_BY_CHARS);
+    if (!by) {
+      try {
+        const snap = await getAdminRtdb().ref(`users/${uid}/displayName`).get();
+        by = sanitizeText(snap.val(), MAX_BY_CHARS);
+      } catch {
+        by = "";
+      }
+    }
+    if (!by) by = "Anonim";
+
     const rl = await checkRateLimit({
       scope: "tplshare",
       uid,
@@ -74,22 +88,30 @@ export async function POST(req: NextRequest): Promise<Response> {
     });
     if (!rl.allowed) throw new ApiError(429, "Batas berbagi template harian tercapai.");
 
-    const id = newTemplateId();
-    await getAdminRtdb().ref(`sharedTemplates/${id}`).set({
+    // Pastikan id unik (hindari menimpa template orang lain bila bentrok).
+    const rtdb = getAdminRtdb();
+    let id = newTemplateId();
+    for (let i = 0; i < 5; i++) {
+      const exists = await rtdb.ref(`sharedTemplates/${id}/id`).get();
+      if (!exists.exists()) break;
+      id = newTemplateId();
+      if (i === 4) throw new ApiError(500, "Gagal membuat link template. Coba lagi.");
+    }
+    await rtdb.ref(`sharedTemplates/${id}`).set({
       id,
       name,
+      by,
       design: designJson,
       bg,
       codeHash: hashCode(id, code),
       ownerUid: uid,
       createdAt: Date.now(),
       uses: 0,
-      failCount: 0,
-      lockedUntil: 0,
+      attempts: { count: 0, lockedUntil: 0 },
     });
     await writeActivity(uid, "template_shared", id);
 
-    return Response.json({ ok: true, id, code }, { status: 201 });
+    return Response.json({ ok: true, id, code, by }, { status: 201 });
   } catch (err) {
     return errorResponse(err);
   }

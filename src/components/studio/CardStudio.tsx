@@ -2,7 +2,9 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { Icon, type IconName } from "@/components/ui/Icon";
 import type { Song } from "@/types";
+import { ApiClientError, api } from "@/lib/api";
 
 export interface StudioData {
   fromName?: string;
@@ -13,10 +15,22 @@ export interface StudioData {
 }
 
 type Align = "left" | "center" | "right";
-type Ratio = "story" | "post" | "square";
+type PresetRatio = "story" | "post" | "square";
+type Ratio = PresetRatio | "photo";
 type ElId = "title" | "to" | "from" | "message" | "song" | "lyric";
 type SongStyle = "vinyl" | "cover" | "pill" | "card" | "cassette" | "text";
 type BgMode = "gen" | "custom" | "image";
+/** ig = animasi (piringan berputar, gelombang). wa = foto diam tanpa elemen tambahan. */
+type Mode = "ig" | "wa";
+type Tab = "elemen" | "isi" | "latar" | "gaya" | "template";
+
+const TABS: { id: Tab; label: string; icon: IconName }[] = [
+  { id: "elemen", label: "Elemen", icon: "layers" },
+  { id: "isi", label: "Isi", icon: "type" },
+  { id: "latar", label: "Latar", icon: "image" },
+  { id: "gaya", label: "Gaya", icon: "sliders" },
+  { id: "template", label: "Template", icon: "bookmark" },
+];
 
 const EL_IDS: ElId[] = ["title", "to", "from", "message", "song", "lyric"];
 const EL_NAMES: Record<ElId, string> = {
@@ -36,11 +50,21 @@ const HAS_LABEL: Record<ElId, boolean> = {
   lyric: false,
 };
 
-const SIZES: Record<Ratio, { w: number; h: number; label: string }> = {
+const SIZES: Record<PresetRatio, { w: number; h: number; label: string }> = {
   story: { w: 1080, h: 1920, label: "Story 9:16" },
   post: { w: 1080, h: 1350, label: "Post 4:5" },
   square: { w: 1080, h: 1080, label: "Kotak 1:1" },
 };
+
+/** Ukuran kartu. "photo" = mengikuti rasio foto agar tampil penuh tanpa dipotong. */
+function dims(d: { ratio: Ratio; photoAspect: number }): { w: number; h: number } {
+  if (d.ratio === "photo") return { w: 1080, h: Math.round(clamp(d.photoAspect, 0.5, 2.5) * 1080) };
+  return SIZES[d.ratio];
+}
+
+/** Kecepatan: satu putaran piringan = satu loop GIF (standar santai ala IG). */
+const LOOP_SECONDS = 8;
+const GIF_FPS = 10;
 
 const PALETTES = [
   { name: "Laut", stops: ["#e3f6fa", "#a9dcea", "#6db3d8"], text: "#0b3d91" },
@@ -122,6 +146,7 @@ interface El {
 
 /** Semua pengaturan tampilan = isi template (tanpa isi pesan). */
 interface Design {
+  mode: Mode;
   ratio: Ratio;
   bgMode: BgMode;
   palette: number;
@@ -132,6 +157,13 @@ interface Design {
   bgDeco: boolean;
   overlay: number;
   overlayColor: string;
+  /** Foto: penuh (tidak dipotong) atau isi kartu (dipotong). */
+  bgFit: "contain" | "cover";
+  /** Ruang kosong di sekitar foto penuh. */
+  bgPad: "blur" | "color";
+  bgPadColor: string;
+  /** Tinggi/lebar foto, dipakai saat ukuran kartu "Ikuti foto". */
+  photoAspect: number;
   font: string;
   color: string;
   title: string;
@@ -161,6 +193,8 @@ interface TemplateFile {
   app: "confess-template";
   v: 1;
   name: string;
+  /** Nama pembuat ("by"). */
+  by?: string;
   design: Design;
   bg: string | null;
 }
@@ -391,12 +425,30 @@ function drawDeco(ctx: CanvasRenderingContext2D, W: number, H: number, seed: num
 
 function drawBackground(ctx: CanvasRenderingContext2D, W: number, H: number, d: Design, bg: HTMLImageElement | null) {
   if (d.bgMode === "image" && bg) {
+    const iw = bg.naturalWidth;
+    const ih = bg.naturalHeight;
+    const kCover = Math.max(W / iw, H / ih);
+    const kFit = Math.min(W / iw, H / ih);
     ctx.fillStyle = "#000";
     ctx.fillRect(0, 0, W, H);
-    const k = Math.max(W / bg.naturalWidth, H / bg.naturalHeight);
-    const dw = bg.naturalWidth * k;
-    const dh = bg.naturalHeight * k;
-    ctx.drawImage(bg, (W - dw) / 2, (H - dh) / 2, dw, dh);
+    if (d.bgFit === "contain" && kCover - kFit > 0.001) {
+      // foto penuh tanpa dipotong; ruang kosong diisi blur foto itu sendiri atau satu warna
+      if (d.bgPad === "blur") {
+        ctx.save();
+        if ("filter" in ctx) ctx.filter = `blur(${Math.round(W * 0.03)}px)`;
+        const kb = kCover * 1.1;
+        ctx.drawImage(bg, (W - iw * kb) / 2, (H - ih * kb) / 2, iw * kb, ih * kb);
+        ctx.restore();
+        ctx.fillStyle = "rgba(0,0,0,0.25)";
+        ctx.fillRect(0, 0, W, H);
+      } else {
+        ctx.fillStyle = d.bgPadColor;
+        ctx.fillRect(0, 0, W, H);
+      }
+      ctx.drawImage(bg, (W - iw * kFit) / 2, (H - ih * kFit) / 2, iw * kFit, ih * kFit);
+    } else {
+      ctx.drawImage(bg, (W - iw * kCover) / 2, (H - ih * kCover) / 2, iw * kCover, ih * kCover);
+    }
     if (d.overlay > 0) {
       ctx.save();
       ctx.globalAlpha = d.overlay;
@@ -445,7 +497,7 @@ function drawBackgroundCached(ctx: CanvasRenderingContext2D, W: number, H: numbe
     id = imgIds.get(bg) ?? ++imgSeq;
     imgIds.set(bg, id);
   }
-  const key = [W, H, d.bgMode, d.palette, d.seed, d.bgA, d.bgB, d.bgAngle, d.bgDeco, d.overlay, d.overlayColor, d.bgMode === "image" ? d.color : "", id].join("|");
+  const key = [W, H, d.bgMode, d.palette, d.seed, d.bgA, d.bgB, d.bgAngle, d.bgDeco, d.overlay, d.overlayColor, d.bgMode === "image" ? d.color : "", d.bgFit, d.bgPad, d.bgPadColor, id].join("|");
   if (!bgCache || bgCache.key !== key) {
     const c = document.createElement("canvas");
     c.width = W;
@@ -569,7 +621,8 @@ function paint(
     if (!song) return null;
     label();
     y += 10 * sz;
-    const style = el.songStyle;
+    // Mode WA: tanpa piringan, tanpa gelombang, tanpa gerak.
+    const style: SongStyle = d.mode === "wa" && el.songStyle === "vinyl" ? "card" : el.songStyle;
     const tp = 54 * sz * el.songText;
     const ap = 42 * sz * el.songText;
     const sc = sz * el.songCover;
@@ -595,12 +648,12 @@ function paint(
     };
     /** Indikator musik ala IG: kotak abu-abu dengan batang yang naik-turun. */
     const eqAt = (ex: number, ey: number, es: number) => {
-      if (dry || !el.songEq) return;
+      if (dry || !el.songEq || d.mode !== "ig") return;
       ctx.save();
       roundRect(ctx, ex, ey, es, es, es * 0.18);
       ctx.fillStyle = "rgba(190,190,190,0.9)";
       ctx.fill();
-      const freq = [3, 5, 4, 2];
+      const freq = [6, 9, 7, 5];
       const off = [0, 0.25, 0.5, 0.75];
       const bwid = es * 0.11;
       const gap = es * 0.09;
@@ -877,7 +930,7 @@ function renderCard(
   guides: { selected: ElId | null; snapX: boolean; snapY: boolean; unit: number } | null,
   phase = 0
 ): Boxes {
-  const { w: W, h: H } = SIZES[d.ratio];
+  const { w: W, h: H } = dims(d);
   if (canvas.width !== W) canvas.width = W;
   if (canvas.height !== H) canvas.height = H;
   const ctx = canvas.getContext("2d");
@@ -886,7 +939,7 @@ function renderCard(
   const boxes: Boxes = {};
   for (const id of d.order) {
     if (!d.els[id].visible) continue;
-    const b = drawEl(ctx, id, d, c, cover, accent, W, H, false, undefined, 1, phase);
+    const b = drawEl(ctx, id, d, c, cover, accent, W, H, false, undefined, 1, d.mode === "ig" ? phase : 0);
     if (b) boxes[id] = b;
   }
   if (guides) {
@@ -943,7 +996,7 @@ function renderCard(
 
 /** Menyusun elemen yang tampil dari atas ke bawah, di tengah, dan muat di kartu. */
 function autoLayout(d: Design, c: Content): Design {
-  const { w: W, h: H } = SIZES[d.ratio];
+  const { w: W, h: H } = dims(d);
   const ctx = document.createElement("canvas").getContext("2d");
   if (!ctx) return d;
   const norm: Design = {
@@ -1022,6 +1075,7 @@ function baseEl(): El {
 function defaultDesign(content: Content, hasLyric: boolean): Design {
   const base = baseEl();
   const d: Design = {
+    mode: "wa",
     ratio: "story",
     bgMode: "gen",
     palette: 0,
@@ -1030,8 +1084,12 @@ function defaultDesign(content: Content, hasLyric: boolean): Design {
     bgB: "#6db3d8",
     bgAngle: 135,
     bgDeco: true,
-    overlay: 0.15,
+    overlay: 0,
     overlayColor: "",
+    bgFit: "contain",
+    bgPad: "blur",
+    bgPadColor: "#000000",
+    photoAspect: 16 / 9,
     font: "dancing",
     color: PALETTES[0].text,
     title: content.song ? "Menfess Songs" : "Menfess",
@@ -1100,7 +1158,13 @@ function sanitizeDesign(raw: unknown, fb: Design): Design {
   const r = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
   const els = (r.els && typeof r.els === "object" ? r.els : {}) as Record<string, unknown>;
   return {
-    ratio: pick(r.ratio, ["story", "post", "square"] as const, fb.ratio),
+    // template lama tanpa field mode: yang memakai piringan dianggap mode IG
+    mode: pick(
+      r.mode,
+      ["ig", "wa"] as const,
+      (els.song as Record<string, unknown> | undefined)?.songStyle === "vinyl" ? "ig" : fb.mode
+    ),
+    ratio: pick(r.ratio, ["story", "post", "square", "photo"] as const, fb.ratio),
     bgMode: pick(r.bgMode, ["gen", "custom", "image"] as const, fb.bgMode),
     palette: Math.round(num(r.palette, 0, PALETTES.length - 1, fb.palette)),
     seed: Math.round(num(r.seed, 0, 100000, fb.seed)),
@@ -1110,6 +1174,10 @@ function sanitizeDesign(raw: unknown, fb: Design): Design {
     bgDeco: bool(r.bgDeco, fb.bgDeco),
     overlay: num(r.overlay, 0, 0.9, fb.overlay),
     overlayColor: colAuto(r.overlayColor, fb.overlayColor),
+    bgFit: pick(r.bgFit, ["contain", "cover"] as const, fb.bgFit),
+    bgPad: pick(r.bgPad, ["blur", "color"] as const, fb.bgPad),
+    bgPadColor: colReq(r.bgPadColor, fb.bgPadColor),
+    photoAspect: num(r.photoAspect, 0.5, 2.5, fb.photoAspect),
     font: pick(r.font, FONT_IDS, fb.font),
     color: colReq(r.color, fb.color),
     title: text(r.title, 40, fb.title),
@@ -1166,6 +1234,8 @@ async function shrinkImage(blob: Blob, maxEdge: number, quality: number): Promis
 const DB_NAME = "confess-studio";
 const STORE = "templates";
 const LAST_KEY = "studio:lastTemplate";
+const PENDING_KEY = "studio:pendingTemplate";
+const SHARE_BY_KEY = "studio:shareBy";
 const MAX_IMPORT_BYTES = 10 * 1024 * 1024;
 
 function openDb(): Promise<IDBDatabase> {
@@ -1314,6 +1384,7 @@ function medianCut(px: Uint32Array, nColors: number): Uint8Array {
 
 /** Tabel 5-5-5 bit → indeks warna palet terdekat (pemetaan piksel jadi cepat). */
 function buildLut(pal: Uint8Array): Uint8Array {
+  // indeks 255 dicadangkan sebagai warna transparan (frame selisih)
   const lut = new Uint8Array(32768);
   for (let c = 0; c < 32768; c++) {
     const r = ((c >> 10) & 31) * 8 + 4;
@@ -1321,7 +1392,7 @@ function buildLut(pal: Uint8Array): Uint8Array {
     const b = (c & 31) * 8 + 4;
     let best = 0;
     let bd = Infinity;
-    for (let i = 0; i < 256; i++) {
+    for (let i = 0; i < 255; i++) {
       const dr = r - pal[i * 3];
       const dg = g - pal[i * 3 + 1];
       const db = b - pal[i * 3 + 2];
@@ -1423,6 +1494,63 @@ function lzwEncode(idx: Uint8Array, out: Bytes) {
     out.bytes(block, bl);
   }
   out.byte(0);
+}
+
+/**
+ * Menulis satu frame. Frame setelah yang pertama hanya memuat area yang berubah
+ * (piksel tak berubah = transparan), jadi GIF jauh lebih kecil dan tetap tajam.
+ */
+function writeGifFrame(out: Bytes, idx: Uint8Array, prev: Uint8Array | null, w: number, h: number, delayCs: number) {
+  let x0 = 0;
+  let y0 = 0;
+  let x1 = w - 1;
+  let y1 = h - 1;
+  if (prev) {
+    x0 = w;
+    y0 = h;
+    x1 = -1;
+    y1 = -1;
+    for (let y = 0; y < h; y++) {
+      const row = y * w;
+      for (let x = 0; x < w; x++) {
+        if (idx[row + x] !== prev[row + x]) {
+          if (x < x0) x0 = x;
+          if (x > x1) x1 = x;
+          if (y < y0) y0 = y;
+          if (y > y1) y1 = y;
+        }
+      }
+    }
+    if (x1 < 0) {
+      x0 = 0;
+      y0 = 0;
+      x1 = 0;
+      y1 = 0;
+    }
+  }
+  const bw = x1 - x0 + 1;
+  const bh = y1 - y0 + 1;
+  const sub = new Uint8Array(bw * bh);
+  for (let y = 0; y < bh; y++) {
+    for (let x = 0; x < bw; x++) {
+      const o = (y0 + y) * w + x0 + x;
+      sub[y * bw + x] = prev && idx[o] === prev[o] ? 255 : idx[o];
+    }
+  }
+  out.byte(0x21);
+  out.byte(0xf9);
+  out.byte(4);
+  out.byte(prev ? 0x05 : 0x04);
+  out.u16(delayCs);
+  out.byte(prev ? 255 : 0);
+  out.byte(0);
+  out.byte(0x2c);
+  out.u16(x0);
+  out.u16(y0);
+  out.u16(bw);
+  out.u16(bh);
+  out.byte(0);
+  lzwEncode(sub, out);
 }
 
 /* ───────────── komponen kecil ───────────── */
@@ -1562,6 +1690,36 @@ function ColorField({
   );
 }
 
+function IconBtn({
+  label,
+  onClick,
+  disabled,
+  active,
+  children,
+}: {
+  label: string;
+  onClick: () => void;
+  disabled?: boolean;
+  active?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={label}
+      title={label}
+      aria-pressed={active}
+      className={`focus-ring grid h-9 w-9 shrink-0 place-items-center rounded-lg transition-colors disabled:opacity-35 ${
+        active ? "bg-primary/15 text-primary" : "text-muted hover:bg-ink/5 hover:text-ink"
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
 function Group({ title, children, open = false }: { title: string; children: ReactNode; open?: boolean }) {
   return (
     <details open={open} className="rounded-lg border border-hairline">
@@ -1589,7 +1747,8 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
   const [zoom, setZoom] = useState(1);
   const [histTick, setHistTick] = useState(0);
   const [playing, setPlaying] = useState(true);
-  const [gifW, setGifW] = useState(480);
+  const [tab, setTab] = useState<Tab>("elemen");
+  const [gifW, setGifW] = useState(720);
   const [gifMsg, setGifMsg] = useState("");
   const phaseRef = useRef(0);
   const gifBusyRef = useRef(false);
@@ -1621,10 +1780,18 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
   const [activeId, setActiveId] = useState<string | null>(null);
   const [tplName, setTplName] = useState("");
   const [tplBusy, setTplBusy] = useState(false);
+  /* bagikan lewat link + 4 kode */
+  const [shareCode, setShareCode] = useState("");
+  const [shareBy, setShareBy] = useState("");
+  const [shareResult, setShareResult] = useState<{ link: string; code: string; name: string; by: string } | null>(null);
+  const [linkInput, setLinkInput] = useState("");
+  const [linkCode, setLinkCode] = useState("");
+  const pendingFlag = useRef(false);
 
   const song = content.song;
   const songEl = design.els.song;
   const isAnimated =
+    design.mode === "ig" &&
     Boolean(song) &&
     songEl.visible &&
     (songEl.songStyle === "vinyl" ||
@@ -1636,6 +1803,16 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
     setDesign((p) => ({ ...p, els: { ...p.els, [id]: { ...p.els[id], ...patch } } }));
   const setC = (patch: Partial<Content>) => setContent((p) => ({ ...p, ...patch }));
   const relayoutIfFresh = (next: Design) => (touched.current ? next : autoLayout(next, content));
+
+  /* ingat nama pembuat ("by") terakhir */
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(SHARE_BY_KEY);
+      if (saved) setShareBy(saved.slice(0, 30));
+    } catch {
+      /* abaikan */
+    }
+  }, []);
 
   /* font Google: muat saat dibuka, gambar ulang setelah siap */
   useEffect(() => {
@@ -1718,7 +1895,7 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
     const canvas = canvasRef.current;
     if (!canvas) return;
     const rect = canvas.getBoundingClientRect();
-    const unit = rect.width > 0 ? SIZES[design.ratio].w / rect.width : 3;
+    const unit = rect.width > 0 ? dims(design).w / rect.width : 3;
     boxesRef.current = renderCard(
       canvas,
       design,
@@ -1742,7 +1919,7 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
     const loop = (now: number) => {
       if (!gifBusyRef.current && now - last >= 33) {
         last = now;
-        phaseRef.current = (now / 3000) % 1;
+        phaseRef.current = (now / (LOOP_SECONDS * 1000)) % 1;
         renderRef.current();
       }
       raf = requestAnimationFrame(loop);
@@ -1829,7 +2006,7 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
           /* abaikan */
         }
         const last = list.find((t) => t.id === lastId);
-        if (last) await applyTemplate(last, true);
+        if (last && !pendingFlag.current) await applyTemplate(last, true);
       } catch {
         /* IndexedDB tidak tersedia: studio tetap jalan tanpa template */
       }
@@ -1837,6 +2014,32 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /* template dari link (/t/[id]) yang menunggu dipakai */
+  useEffect(() => {
+    let raw: string | null = null;
+    try {
+      raw = localStorage.getItem(PENDING_KEY);
+    } catch {
+      raw = null;
+    }
+    if (!raw) return;
+    pendingFlag.current = true;
+    try {
+      localStorage.removeItem(PENDING_KEY);
+    } catch {
+      /* abaikan */
+    }
+    try {
+      const obj = JSON.parse(raw) as Partial<TemplateFile>;
+      if (obj?.app !== "confess-template" || obj.v !== 1) return;
+      setTab("template");
+      void importPayload(obj, true);
+    } catch {
+      /* abaikan */
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -1853,14 +2056,29 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
     }
     try {
       const blob = await shrinkImage(file, 2200, 0.9);
-      await setBackground(blob);
-      setD({ bgMode: "image" });
+      const img = await setBackground(blob);
+      if (!img) throw new Error("img");
+      // Foto tampil penuh: kalau rasionya beda dari ukuran kartu, kartu mengikuti foto.
+      const aspect = clamp(img.naturalHeight / img.naturalWidth, 0.5, 2.5);
+      const cur = dims(designRef.current);
+      const differs = Math.abs(aspect / (cur.h / cur.w) - 1) > 0.04;
+      const toPhoto = designRef.current.ratio === "photo" || differs;
+      setDesign((p) => {
+        const next: Design = {
+          ...p,
+          bgMode: "image",
+          photoAspect: aspect,
+          ratio: toPhoto ? "photo" : p.ratio,
+        };
+        return touched.current ? next : autoLayout(next, content);
+      });
+      setInfo(toPhoto ? "Ukuran kartu mengikuti foto supaya tampil penuh tanpa dipotong." : "");
     } catch {
       setError("Gambar tidak bisa dibaca.");
     }
   }
 
-  async function setBackground(blob: Blob | null) {
+  async function setBackground(blob: Blob | null): Promise<HTMLImageElement | null> {
     if (bgUrlRef.current) {
       URL.revokeObjectURL(bgUrlRef.current);
       bgUrlRef.current = null;
@@ -1868,13 +2086,14 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
     if (!blob) {
       setBgImg(null);
       setBgBlob(null);
-      return;
+      return null;
     }
     const url = URL.createObjectURL(blob);
     const img = await loadImg(url);
     bgUrlRef.current = url;
     setBgImg(img);
     setBgBlob(blob);
+    return img;
   }
 
   /* ── template ── */
@@ -1966,7 +2185,8 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
     setInfo("");
     try {
       const bg = t.bg ? await blobToDataUrl(await shrinkImage(t.bg, 1600, 0.85)) : null;
-      const payload: TemplateFile = { app: "confess-template", v: 1, name: t.name, design: t.design, bg };
+      const by = shareBy.trim();
+      const payload: TemplateFile = { app: "confess-template", v: 1, name: t.name, ...(by ? { by } : {}), design: t.design, bg };
       const slug = t.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "template";
       const file = new File([JSON.stringify(payload)], `${slug}.confesstpl.json`, { type: "application/json" });
       if (navigator.canShare?.({ files: [file] })) {
@@ -2001,6 +2221,15 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
     try {
       const obj = JSON.parse(await file.text()) as Partial<TemplateFile>;
       if (obj?.app !== "confess-template" || obj.v !== 1) throw new Error("format");
+      await importPayload(obj);
+    } catch {
+      setError("File template tidak valid.");
+    }
+  }
+
+  /** Dipakai impor file, impor lewat link, dan template tertunda dari halaman /t/[id]. */
+  async function importPayload(obj: Partial<TemplateFile>, silent = false) {
+    try {
       const base = defaultDesign(initialContent, Boolean(data.songLyric));
       const design = sanitizeDesign(obj.design, base);
       let bg: Blob | null = null;
@@ -2028,14 +2257,128 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
       await dbRun("readwrite", (s) => s.put(t));
       setTemplates(await listTemplates());
       await applyTemplate(t);
-      setInfo(`Template "${t.name}" berhasil diimpor.`);
+      const byLabel = text(obj.by, 30, "").trim();
+      const shown = byLabel ? `${t.name}" by ${byLabel}` : `${t.name}"`;
+      if (!silent) setInfo(`Template "${shown} berhasil diimpor.`);
+      else setInfo(`Template "${shown} dari link sudah siap dipakai.`);
     } catch {
-      setError("File template tidak valid.");
+      setError("Template tidak valid.");
+    }
+  }
+
+  /* ── bagikan lewat link + kode 4 digit dari pengirim ── */
+  async function shareTemplateLink(t: Template) {
+    setError("");
+    setInfo("");
+    const code = shareCode.trim();
+    if (code && !/^\d{4}$/.test(code)) {
+      setError("Kode harus tepat 4 angka (atau kosongkan agar dibuat otomatis).");
+      return;
+    }
+    setTplBusy(true);
+    try {
+      // Kompres bertahap supaya muat batas server (± 2,4 juta karakter).
+      let bg: string | null = null;
+      if (t.bg) {
+        for (const [edge, q] of [[1400, 0.82], [1100, 0.72], [800, 0.62], [600, 0.5]] as const) {
+          bg = await blobToDataUrl(await shrinkImage(t.bg, edge, q));
+          if (bg.length <= 2_300_000) break;
+        }
+        if (bg && bg.length > 2_300_000) {
+          setError("Gambar latar terlalu besar untuk dibagikan lewat link. Pakai latar lain atau bagikan file.");
+          return;
+        }
+      }
+      const by = shareBy.trim();
+      try {
+        localStorage.setItem(SHARE_BY_KEY, by);
+      } catch {
+        /* abaikan */
+      }
+      const res = await api("/api/templates", {
+        body: { name: t.name, by: by || undefined, design: t.design, bg, code: code || undefined },
+      });
+      setShareResult({
+        link: `${window.location.origin}/t/${String(res.id)}`,
+        code: String(res.code),
+        name: t.name,
+        by: typeof res.by === "string" ? res.by : by || "Anonim",
+      });
+      setShareCode("");
+    } catch (err) {
+      setError(err instanceof ApiClientError ? err.message : "Link template gagal dibuat.");
+    } finally {
+      setTplBusy(false);
+    }
+  }
+
+  async function copyText(label: string, value: string) {
+    try {
+      await navigator.clipboard.writeText(value);
+      setInfo(`${label} disalin.`);
+    } catch {
+      setInfo(`${label}: ${value}`);
+    }
+  }
+
+  async function sendShareResult() {
+    if (!shareResult) return;
+    const msg = `Template kartu CONFESS "${shareResult.name}" by ${shareResult.by}\nLink: ${shareResult.link}\nKode: ${shareResult.code}`;
+    try {
+      if (typeof navigator.share === "function") {
+        await navigator.share({ title: shareResult.name, text: msg });
+        return;
+      }
+    } catch (e) {
+      if ((e as { name?: string }).name === "AbortError") return;
+    }
+    await copyText("Link & kode", msg);
+  }
+
+  async function importFromLink() {
+    setError("");
+    setInfo("");
+    const last = linkInput.trim().split(/[?#]/)[0].replace(/\/+$/, "").split("/").pop() ?? "";
+    const m = /^[a-z0-9]{8,12}$/i.exec(last);
+    const id = m ? m[0].toLowerCase() : "";
+    if (!id) {
+      setError("Tempel link template dari pengirim.");
+      return;
+    }
+    if (!/^\d{4}$/.test(linkCode.trim())) {
+      setError("Masukkan 4 angka kode dari pengirim.");
+      return;
+    }
+    setTplBusy(true);
+    try {
+      const res = await api("/api/templates/open", { body: { id, code: linkCode.trim() } });
+      await importPayload(
+        {
+          app: "confess-template",
+          v: 1,
+          name: String(res.name ?? "Template"),
+          by: typeof res.by === "string" ? res.by : undefined,
+          design: res.design as Design,
+          bg: typeof res.bg === "string" ? res.bg : null,
+        },
+        true
+      );
+      setLinkInput("");
+      setLinkCode("");
+    } catch (err) {
+      setError(err instanceof ApiClientError ? err.message : "Template tidak bisa dibuka.");
+    } finally {
+      setTplBusy(false);
     }
   }
 
   /* ── ekspor gambar ── */
-  function toBlob(): Promise<Blob | null> {
+  async function toBlob(): Promise<Blob | null> {
+    try {
+      await document.fonts?.ready;
+    } catch {
+      /* abaikan */
+    }
     return new Promise((resolve) => {
       try {
         const c = document.createElement("canvas");
@@ -2078,11 +2421,16 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
 
   /* ── GIF animasi (satu putaran penuh = satu loop, jadi mulus) ── */
   async function makeGif(): Promise<Blob | null> {
+    try {
+      await document.fonts?.ready;
+    } catch {
+      /* abaikan */
+    }
     const d = designRef.current;
-    const { w: W, h: H } = SIZES[d.ratio];
+    const { w: W, h: H } = dims(d);
     const outW = gifW;
     const outH = Math.max(2, Math.round((outW * H) / W));
-    const N = 40;
+    const N = LOOP_SECONDS * GIF_FPS;
     const full = document.createElement("canvas");
     const small = document.createElement("canvas");
     small.width = outW;
@@ -2098,20 +2446,20 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
     };
     gifBusyRef.current = true;
     try {
-      // 1) palet global dari beberapa frame contoh
-      const stride = Math.max(1, Math.floor((outW * outH) / 9000));
+      // 1) palet global (255 warna + 1 transparan) dari frame contoh yang tersebar
+      const stride = Math.max(1, Math.floor((outW * outH) / 12000));
       const samples: number[] = [];
-      for (const i of [0, 7, 14, 21, 28, 35]) {
-        const px = grab(i);
+      for (let j = 0; j < 8; j++) {
+        const px = grab(Math.floor((j * N) / 8));
         for (let q = 0; q < outW * outH; q += stride) {
           const o = q * 4;
           samples.push((px[o] << 16) | (px[o + 1] << 8) | px[o + 2]);
         }
       }
-      const palette = medianCut(Uint32Array.from(samples), 256);
+      const palette = medianCut(Uint32Array.from(samples), 255);
       const lut = buildLut(palette);
 
-      // 2) tulis tiap frame langsung (hemat memori)
+      // 2) tulis frame satu per satu (hemat memori)
       const out = new Bytes();
       out.str("GIF89a");
       out.u16(outW);
@@ -2128,24 +2476,13 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
       out.byte(1);
       out.u16(0);
       out.byte(0);
+      let prev: Uint8Array | null = null;
       for (let i = 0; i < N; i++) {
         setGifMsg(`Membuat GIF… ${i + 1}/${N}`);
         await new Promise((r) => setTimeout(r, 0));
         const idx = quantize(grab(i), outW, outH, lut);
-        out.byte(0x21);
-        out.byte(0xf9);
-        out.byte(4);
-        out.byte(0x04);
-        out.u16(8);
-        out.byte(0);
-        out.byte(0);
-        out.byte(0x2c);
-        out.u16(0);
-        out.u16(0);
-        out.u16(outW);
-        out.u16(outH);
-        out.byte(0);
-        lzwEncode(idx, out);
+        writeGifFrame(out, idx, prev, outW, outH, Math.round(100 / GIF_FPS));
+        prev = idx;
       }
       out.byte(0x3b);
       return new Blob([out.done()], { type: "image/gif" });
@@ -2221,6 +2558,26 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
       sy0: b.sy,
     };
     setSelected(id);
+    setTab("elemen");
+  }
+
+  function setMode(v: Mode) {
+    setDesign((p) => ({
+      ...p,
+      mode: v,
+      els:
+        v === "wa" && p.els.song.songStyle === "vinyl"
+          ? { ...p.els, song: { ...p.els.song, songStyle: "card" } }
+          : p.els,
+    }));
+  }
+
+  function toggleVisible(id: ElId) {
+    const next = {
+      ...design,
+      els: { ...design.els, [id]: { ...design.els[id], visible: !design.els[id].visible } },
+    };
+    setDesign(relayoutIfFresh(next));
   }
 
   function onPointerDown(e: React.PointerEvent<HTMLCanvasElement>) {
@@ -2301,7 +2658,7 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
 
     const g = gestureRef.current;
     if (!g) return;
-    const { w: W, h: H } = SIZES[designRef.current.ratio];
+    const { w: W, h: H } = dims(designRef.current);
     const { el0, c0, bw0, h0, sy0 } = g;
     const rot = (el0.rotation * Math.PI) / 180;
     touched.current = true;
@@ -2415,61 +2772,63 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
   const sel = selected && available(selected) ? design.els[selected] : null;
   const active = templates.find((t) => t.id === activeId) ?? null;
 
+  const dm = dims(design);
+  const canUndo = hist.current.past.length > 0 || JSON.stringify(design) !== hist.current.last;
+
   return createPortal(
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 p-3" onClick={onClose}>
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 sm:p-4" onClick={onClose}>
       <div
         role="dialog"
         aria-modal="true"
         aria-label="Kartu pesan"
-        className="glass-panel mx-auto my-4 w-full max-w-5xl rounded-2xl border border-hairline p-4 shadow-lift"
+        className="mx-auto flex min-h-full w-full max-w-5xl flex-col bg-card sm:min-h-0 sm:rounded-2xl sm:border sm:border-hairline sm:shadow-lift"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-base font-semibold text-ink">Kartu pesan</h2>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Tutup"
-            className="focus-ring rounded-lg px-2 py-1 text-sm font-semibold text-muted hover:text-ink"
-          >
-            ✕
-          </button>
-        </div>
+        <header className="flex items-center gap-3 border-b border-hairline px-4 py-3">
+          <span className="grid h-8 w-8 place-items-center rounded-lg bg-primary/15 text-primary">
+            <Icon name="music" className="h-4 w-4" />
+          </span>
+          <h2 className="text-sm font-semibold text-ink sm:text-base">Kartu pesan</h2>
+          <div className="ml-auto flex items-center gap-2">
+            <div role="group" aria-label="Mode kartu" className="inline-flex rounded-xl bg-surface p-0.5 text-xs font-semibold">
+              {(["wa", "ig"] as const).map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  aria-pressed={design.mode === m}
+                  title={m === "wa" ? "Foto (WA): gambar diam tanpa gerak" : "Animasi (IG): piringan dan gelombang bergerak"}
+                  onClick={() => setMode(m)}
+                  className={`focus-ring rounded-[10px] px-3 py-1.5 transition-colors ${
+                    design.mode === m ? "bg-primary text-white shadow-sm" : "text-muted hover:text-ink"
+                  }`}
+                >
+                  {m === "wa" ? "Foto" : "Animasi"}
+                </button>
+              ))}
+            </div>
+            <IconBtn label="Tutup" onClick={onClose}>
+              <Icon name="close" className="h-5 w-5" />
+            </IconBtn>
+          </div>
+        </header>
 
-        <div className="grid gap-5 md:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
+        <div className="grid flex-1 md:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)]">
           {/* ── pratinjau ── */}
-          <div className="space-y-3 self-start md:sticky md:top-4" {...dropHandlers}>
-            <div className="flex items-center gap-1.5">
-              <button
-                type="button"
-                onClick={undo}
-                disabled={!(hist.current.past.length > 0 || JSON.stringify(design) !== hist.current.last)}
-                aria-label="Urungkan"
-                title="Urungkan (Ctrl+Z)"
-                className="btn-ghost px-2.5 py-1 text-sm disabled:opacity-40"
-                data-tick={histTick}
-              >
-                ↶
-              </button>
-              <button
-                type="button"
-                onClick={redo}
-                disabled={hist.current.future.length === 0}
-                aria-label="Ulangi"
-                title="Ulangi (Ctrl+Shift+Z)"
-                className="btn-ghost px-2.5 py-1 text-sm disabled:opacity-40"
-              >
-                ↷
-              </button>
-              <span className="mx-1 h-5 w-px bg-hairline" aria-hidden />
-              <button
-                type="button"
-                onClick={() => setZoom((z) => clamp(Math.round((z - 0.25) * 4) / 4, 1, 4))}
-                aria-label="Perkecil tampilan"
-                className="btn-ghost px-2.5 py-1 text-sm"
-              >
-                −
-              </button>
+          <div
+            className="sticky top-0 z-20 border-b border-hairline bg-card [--ph:40vh] md:top-2 md:z-auto md:self-start md:border-b-0 md:[--ph:62vh]"
+            {...dropHandlers}
+          >
+            <div className="flex items-center gap-1 px-3 pt-2">
+              <IconBtn label="Urungkan (Ctrl+Z)" onClick={undo} disabled={!canUndo}>
+                <Icon name="undo" className="h-[18px] w-[18px]" />
+              </IconBtn>
+              <IconBtn label="Ulangi (Ctrl+Shift+Z)" onClick={redo} disabled={hist.current.future.length === 0}>
+                <Icon name="redo" className="h-[18px] w-[18px]" />
+              </IconBtn>
+              <span className="mx-1.5 h-5 w-px bg-hairline" aria-hidden data-tick={histTick} />
+              <IconBtn label="Perkecil tampilan" onClick={() => setZoom((z) => clamp(Math.round((z - 0.25) * 4) / 4, 1, 4))} disabled={zoom <= 1}>
+                <Icon name="minus" className="h-[18px] w-[18px]" />
+              </IconBtn>
               <input
                 type="range"
                 min={1}
@@ -2480,31 +2839,35 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
                 aria-label="Zoom tampilan"
                 className="min-w-0 flex-1"
               />
+              <IconBtn label="Perbesar tampilan" onClick={() => setZoom((z) => clamp(Math.round((z + 0.25) * 4) / 4, 1, 4))} disabled={zoom >= 4}>
+                <Icon name="plus" className="h-[18px] w-[18px]" />
+              </IconBtn>
               <button
                 type="button"
-                onClick={() => setZoom((z) => clamp(Math.round((z + 0.25) * 4) / 4, 1, 4))}
-                aria-label="Perbesar tampilan"
-                className="btn-ghost px-2.5 py-1 text-sm"
+                onClick={() => setZoom(1)}
+                aria-label="Kembali ke 100%"
+                className="focus-ring w-11 shrink-0 rounded-lg text-center text-xs font-semibold tabular-nums text-muted hover:text-ink"
               >
-                +
-              </button>
-              <button type="button" onClick={() => setZoom(1)} className="btn-ghost px-2 py-1 text-xs">
                 {Math.round(zoom * 100)}%
               </button>
-              <button
-                type="button"
-                onClick={() => setPlaying((v) => !v)}
-                aria-pressed={playing}
-                aria-label={playing ? "Jeda animasi" : "Putar animasi"}
-                title={playing ? "Jeda animasi" : "Putar animasi"}
-                className="btn-ghost px-2.5 py-1 text-sm"
-              >
-                {playing ? "⏸" : "▶"}
-              </button>
+              {design.mode === "ig" && (
+                <>
+                  <span className="mx-1.5 h-5 w-px bg-hairline" aria-hidden />
+                  <IconBtn
+                    label={playing ? "Jeda animasi" : "Putar animasi"}
+                    onClick={() => setPlaying((v) => !v)}
+                    active={playing}
+                  >
+                    <Icon name={playing ? "pause" : "play"} className="h-5 w-5" />
+                  </IconBtn>
+                </>
+              )}
             </div>
             <div
               ref={scrollRef}
-              className={`relative max-h-[64vh] overflow-auto rounded-xl p-1 ${drag ? "ring-2 ring-primary" : ""}`}
+              className={`relative mx-3 my-2 max-h-[calc(var(--ph)+0.5rem)] overflow-auto rounded-xl bg-surface/60 p-1 ${
+                drag ? "ring-2 ring-primary" : ""
+              }`}
             >
               {drag && (
                 <div className="pointer-events-none absolute inset-0 z-10 grid place-items-center rounded-xl bg-primary/20 text-sm font-semibold text-ink">
@@ -2522,7 +2885,7 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
                 onKeyDown={onKeyDown}
                 className="mx-auto block rounded-lg shadow-lift outline-none focus-visible:ring-2 focus-visible:ring-primary"
                 style={{
-                  width: `calc(min(100%, ${((62 * SIZES[design.ratio].w) / SIZES[design.ratio].h).toFixed(3)}vh) * ${zoom})`,
+                  width: `calc(min(100%, var(--ph) * ${(dm.w / dm.h).toFixed(4)}) * ${zoom})`,
                   height: "auto",
                   maxWidth: "none",
                   touchAction: "none",
@@ -2530,59 +2893,38 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
                 }}
               />
             </div>
-            <p className="text-center text-[11px] text-muted">
-              Pilih elemen, lalu tarik titik di sudut dan sisi untuk mengubah ukuran, titik atas untuk memutar. Cubit
-              dua jari untuk skala dan putar cepat. Zoom lalu geser area kosong untuk menggeser tampilan.
+            <p className="hidden px-4 pb-3 text-center text-[11px] text-muted md:block">
+              Tarik titik biru untuk mengubah ukuran, titik atas untuk memutar. Cubit dua jari untuk skala dan putar cepat.
             </p>
-            <div className="flex gap-2">
-              <button type="button" onClick={() => void download()} className="btn-primary flex-1">
-                Unduh PNG
-              </button>
-              {canShare && (
-                <button type="button" onClick={() => void shareImage()} className="btn-ghost flex-1">
-                  Bagikan
-                </button>
-              )}
-            </div>
-            <div className="flex items-center gap-2">
-              <select
-                value={gifW}
-                onChange={(e) => setGifW(Number(e.target.value))}
-                aria-label="Ukuran GIF"
-                disabled={Boolean(gifMsg)}
-                className="input w-auto py-1.5 text-xs"
-              >
-                <option value={360}>GIF kecil</option>
-                <option value={480}>GIF sedang</option>
-                <option value={640}>GIF besar</option>
-              </select>
-              <button
-                type="button"
-                onClick={() => void saveGif(false)}
-                disabled={Boolean(gifMsg)}
-                className="btn-ghost flex-1 disabled:opacity-60"
-              >
-                {gifMsg || "Unduh GIF"}
-              </button>
-              {canShare && (
-                <button
-                  type="button"
-                  onClick={() => void saveGif(true)}
-                  disabled={Boolean(gifMsg)}
-                  className="btn-ghost disabled:opacity-60"
-                >
-                  Bagikan
-                </button>
-              )}
-            </div>
-            {error && <p className="text-xs text-warning">{error}</p>}
-            {info && <p className="text-xs text-success">{info}</p>}
           </div>
 
           {/* ── pengaturan ── */}
-          <div className="space-y-5">
+          <div className="min-w-0 md:border-l md:border-hairline">
+            <div
+              role="tablist"
+              aria-label="Pengaturan kartu"
+              className="flex gap-1 overflow-x-auto border-b border-hairline px-3 pt-2"
+            >
+              {TABS.map((t) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={tab === t.id}
+                  onClick={() => setTab(t.id)}
+                  className={`focus-ring -mb-px flex shrink-0 items-center gap-1.5 border-b-2 px-3 py-2.5 text-xs font-semibold transition-colors ${
+                    tab === t.id ? "border-primary text-ink" : "border-transparent text-muted hover:text-ink"
+                  }`}
+                >
+                  <Icon name={t.icon} className="h-4 w-4" />
+                  {t.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="space-y-5 p-4">
+              {tab === "template" && (
             <section className="space-y-2">
-              <p className="label">Template (tersimpan di HP ini)</p>
               {templates.length > 0 && (
                 <ul className="flex gap-2 overflow-x-auto pb-1">
                   {templates.map((t) => (
@@ -2611,7 +2953,7 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
                           aria-label={`Hapus template ${t.name}`}
                           className="focus-ring rounded px-1 text-[11px] text-muted hover:text-ink"
                         >
-                          ✕
+                          <Icon name="trash" className="h-3.5 w-3.5" />
                         </button>
                       </div>
                     </li>
@@ -2653,7 +2995,7 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
                     onClick={() => void shareTemplate(active)}
                     className="btn-ghost px-3 py-1.5 text-xs"
                   >
-                    Bagikan template
+                    Bagikan file
                   </button>
                 )}
                 <label className="btn-ghost cursor-pointer px-3 py-1.5 text-xs">
@@ -2670,14 +3012,98 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
                   />
                 </label>
               </div>
+              {active && (
+                <div className="space-y-2 rounded-xl border border-hairline bg-surface/60 p-3">
+                  <p className="text-xs font-semibold text-ink">Bagikan lewat link + kode</p>
+                  <input
+                    value={shareBy}
+                    onChange={(e) => setShareBy(e.target.value.slice(0, 30))}
+                    maxLength={30}
+                    placeholder="by (nama kamu)"
+                    aria-label="Nama pembuat template"
+                    className="input py-1.5 text-xs"
+                  />
+                  <div className="flex flex-wrap gap-2">
+                    <input
+                      value={shareCode}
+                      onChange={(e) => setShareCode(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                      inputMode="numeric"
+                      maxLength={4}
+                      placeholder="Kode 4 angka (opsional)"
+                      aria-label="Kode 4 angka dari pengirim"
+                      className="input min-w-0 flex-1 py-1.5 text-xs tracking-widest"
+                    />
+                    <button
+                      type="button"
+                      disabled={tplBusy}
+                      onClick={() => void shareTemplateLink(active)}
+                      className="btn-primary px-3 py-1.5 text-xs"
+                    >
+                      Buat link
+                    </button>
+                  </div>
+                  {shareResult && (
+                    <div className="space-y-2 rounded-lg border border-primary/30 bg-primary/10 p-2.5 text-xs">
+                      <p className="text-ink">
+                        {shareResult.name} <span className="text-muted">by {shareResult.by}</span>
+                      </p>
+                      <p className="break-all font-mono text-ink">{shareResult.link}</p>
+                      <p className="text-ink">
+                        Kode: <strong className="font-mono text-base tracking-[0.3em]">{shareResult.code}</strong>
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        <button type="button" onClick={() => void copyText("Link", shareResult.link)} className="btn-ghost px-3 py-1 text-xs">
+                          Salin link
+                        </button>
+                        <button type="button" onClick={() => void copyText("Kode", shareResult.code)} className="btn-ghost px-3 py-1 text-xs">
+                          Salin kode
+                        </button>
+                        <button type="button" onClick={() => void sendShareResult()} className="btn-primary px-3 py-1 text-xs">
+                          Kirim
+                        </button>
+                      </div>
+                      <p className="text-muted">Kirim link dan kode ke penerima. Tanpa kode, template tidak bisa dibuka.</p>
+                    </div>
+                  )}
+                </div>
+              )}
+              <div className="space-y-2 rounded-xl border border-hairline bg-surface/60 p-3">
+                <p className="text-xs font-semibold text-ink">Pakai template dari link</p>
+                <input
+                  value={linkInput}
+                  onChange={(e) => setLinkInput(e.target.value)}
+                  placeholder="Tempel link template"
+                  aria-label="Link template dari pengirim"
+                  className="input py-1.5 text-xs"
+                />
+                <div className="flex gap-2">
+                  <input
+                    value={linkCode}
+                    onChange={(e) => setLinkCode(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                    inputMode="numeric"
+                    maxLength={4}
+                    placeholder="4 kode"
+                    aria-label="4 angka kode dari pengirim"
+                    className="input min-w-0 flex-1 py-1.5 text-xs tracking-widest"
+                  />
+                  <button
+                    type="button"
+                    disabled={tplBusy}
+                    onClick={() => void importFromLink()}
+                    className="btn-primary px-3 py-1.5 text-xs"
+                  >
+                    Pakai & buat ulang
+                  </button>
+                </div>
+              </div>
               <p className="text-[11px] text-muted">
-                Menyimpan latar foto, posisi, ukuran, gaya, dan warna. Tersimpan di perangkat ini saja. Untuk
-                HP lain: Bagikan template, kirim filenya, lalu Impor di sana.
+                Menyimpan latar foto, posisi, ukuran, gaya, dan warna. Tersimpan di perangkat ini. Untuk HP
+                lain: buat link + kode, atau kirim file template lalu Impor.
               </p>
             </section>
-
+              )}
+              {tab === "latar" && (
             <section className="space-y-2">
-              <p className="label">Latar</p>
               <Seg
                 label="Jenis latar"
                 value={design.bgMode}
@@ -2774,14 +3200,56 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
               )}
               {design.bgMode === "image" && (
                 <div className="space-y-3">
+                  <Seg
+                    label="Cara menampilkan foto"
+                    value={design.bgFit}
+                    onChange={(v) => setD({ bgFit: v })}
+                    options={[
+                      { id: "contain", label: "Penuh (tidak dipotong)" },
+                      { id: "cover", label: "Isi kartu (dipotong)" },
+                    ]}
+                  />
+                  {design.bgFit === "contain" && (
+                    <>
+                      <Seg
+                        label="Ruang kosong di sekitar foto"
+                        value={design.bgPad}
+                        onChange={(v) => setD({ bgPad: v })}
+                        options={[
+                          { id: "blur", label: "Blur foto" },
+                          { id: "color", label: "Satu warna" },
+                        ]}
+                      />
+                      {design.bgPad === "color" && (
+                        <ColorField label="Warna ruang kosong" value={design.bgPadColor} fallback="#000000" onChange={(v) => setD({ bgPadColor: v })} />
+                      )}
+                      {bgImg && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setDesign((p) =>
+                              relayoutIfFresh({
+                                ...p,
+                                ratio: "photo",
+                                photoAspect: clamp(bgImg.naturalHeight / bgImg.naturalWidth, 0.5, 2.5),
+                              })
+                            )
+                          }
+                          className="text-xs font-semibold text-primary"
+                        >
+                          Sesuaikan ukuran kartu dengan foto
+                        </button>
+                      )}
+                    </>
+                  )}
                   <Range label="Kekuatan penutup" value={design.overlay} min={0} max={0.9} step={0.05} onChange={(v) => setD({ overlay: v })} />
                   <ColorField label="Warna penutup" value={design.overlayColor} fallback="#000000" auto onChange={(v) => setD({ overlayColor: v })} />
                 </div>
               )}
             </section>
-
+              )}
+              {tab === "isi" && (
             <section className="space-y-2">
-              <p className="label">Isi</p>
               <input
                 value={design.title}
                 onChange={(e) => setD({ title: e.target.value })}
@@ -2828,10 +3296,11 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
                 />
               )}
             </section>
-
+              )}
+              {tab === "elemen" && (
             <section className="space-y-3">
               <div className="flex items-center justify-between">
-                <p className="label !mb-0">Elemen</p>
+                <p className="label !mb-0">Lapisan</p>
                 <button
                   type="button"
                   onClick={() => {
@@ -2854,18 +3323,15 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
                         selected === id ? "border-primary bg-primary/10" : "border-hairline"
                       }`}
                     >
-                      <input
-                        type="checkbox"
-                        checked={design.els[id].visible}
-                        aria-label={`Tampilkan ${EL_NAMES[id]}`}
-                        onChange={(e) => {
-                          const next = {
-                            ...design,
-                            els: { ...design.els, [id]: { ...design.els[id], visible: e.target.checked } },
-                          };
-                          setDesign(relayoutIfFresh(next));
-                        }}
-                      />
+                      <button
+                        type="button"
+                        aria-pressed={design.els[id].visible}
+                        aria-label={`${design.els[id].visible ? "Sembunyikan" : "Tampilkan"} ${EL_NAMES[id]}`}
+                        onClick={() => toggleVisible(id)}
+                        className="focus-ring grid h-7 w-7 place-items-center rounded-md text-muted hover:text-ink"
+                      >
+                        <Icon name={design.els[id].visible ? "eye" : "eyeoff"} className="h-4 w-4" />
+                      </button>
                       <button
                         type="button"
                         onClick={() => setSelected(id)}
@@ -2879,7 +3345,7 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
                         aria-label={`Naikkan lapisan ${EL_NAMES[id]}`}
                         className="focus-ring rounded px-1.5 text-xs text-muted hover:text-ink"
                       >
-                        ▲
+                        <Icon name="chevronUp" className="h-4 w-4" />
                       </button>
                       <button
                         type="button"
@@ -2887,7 +3353,7 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
                         aria-label={`Turunkan lapisan ${EL_NAMES[id]}`}
                         className="focus-ring rounded px-1.5 text-xs text-muted hover:text-ink"
                       >
-                        ▼
+                        <Icon name="chevronDown" className="h-4 w-4" />
                       </button>
                     </li>
                   ))}
@@ -2904,11 +3370,11 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
                         label="Gaya preview lagu"
                         value={sel.songStyle}
                         onChange={(v) => setEl(selected, { songStyle: v })}
-                        options={SONG_STYLES}
+                        options={design.mode === "ig" ? SONG_STYLES : SONG_STYLES.filter((x) => x.id !== "vinyl")}
                       />
                       <Range label="Ukuran teks lagu" value={sel.songText} min={0.2} max={2} step={0.05} onChange={(v) => setEl(selected, { songText: v })} />
                       <Range label="Ukuran cover / kaset" value={sel.songCover} min={0.2} max={2} step={0.05} onChange={(v) => setEl(selected, { songCover: v })} />
-                      {(sel.songStyle === "cover" || sel.songStyle === "pill" || sel.songStyle === "card") && (
+                      {design.mode === "ig" && (sel.songStyle === "cover" || sel.songStyle === "pill" || sel.songStyle === "card") && (
                         <Toggle label="Indikator musik (equalizer)" checked={sel.songEq} onChange={(v) => setEl(selected, { songEq: v })} />
                       )}
                     </div>
@@ -3014,14 +3480,26 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
                 </div>
               )}
             </section>
-
+              )}
+              {tab === "gaya" && (
             <section className="space-y-3">
-              <p className="label">Tampilan umum</p>
               <Seg
                 label="Ukuran kartu"
                 value={design.ratio}
-                onChange={(v) => setDesign((p) => relayoutIfFresh({ ...p, ratio: v }))}
-                options={(Object.keys(SIZES) as Ratio[]).map((id) => ({ id, label: SIZES[id].label }))}
+                onChange={(v) =>
+                  setDesign((p) =>
+                    relayoutIfFresh({
+                      ...p,
+                      ratio: v,
+                      photoAspect:
+                        v === "photo" && bgImg ? clamp(bgImg.naturalHeight / bgImg.naturalWidth, 0.5, 2.5) : p.photoAspect,
+                    })
+                  )
+                }
+                options={[
+                  ...(Object.keys(SIZES) as PresetRatio[]).map((id) => ({ id: id as Ratio, label: SIZES[id].label })),
+                  { id: "photo" as Ratio, label: "Ikuti foto" },
+                ]}
               />
               <label className="block text-xs text-muted">
                 Font utama
@@ -3039,8 +3517,63 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
               </label>
               <ColorField label="Warna utama teks" value={design.color} fallback="#0b3d91" onChange={(v) => setD({ color: v })} />
             </section>
+              )}
+            </div>
           </div>
         </div>
+
+        <footer className="sticky bottom-0 z-30 space-y-2 border-t border-hairline bg-card px-4 py-3">
+          {error && <p className="text-xs text-warning">{error}</p>}
+          {info && <p className="text-xs text-success">{info}</p>}
+          <div className="flex flex-wrap items-center gap-2">
+            <button type="button" onClick={() => void download()} className="btn-primary flex-1 sm:flex-none">
+              <Icon name="download" className="h-4 w-4" />
+              {design.mode === "wa" ? "Unduh foto" : "Unduh PNG"}
+            </button>
+            {canShare && (
+              <button type="button" onClick={() => void shareImage()} className="btn-ghost">
+                <Icon name="share" className="h-4 w-4" />
+                <span className="hidden sm:inline">Bagikan</span>
+              </button>
+            )}
+            {design.mode === "ig" && (
+              <>
+                <span className="mx-1 hidden h-6 w-px bg-hairline sm:block" aria-hidden />
+                <select
+                  value={gifW}
+                  onChange={(e) => setGifW(Number(e.target.value))}
+                  aria-label="Ukuran GIF"
+                  disabled={Boolean(gifMsg)}
+                  className="input w-auto py-2 text-xs"
+                >
+                  <option value={720}>HD</option>
+                  <option value={540}>Sedang</option>
+                  <option value={360}>Kecil</option>
+                </select>
+                <button
+                  type="button"
+                  onClick={() => void saveGif(false)}
+                  disabled={Boolean(gifMsg)}
+                  className="btn-ghost flex-1 sm:flex-none"
+                >
+                  <Icon name="film" className="h-4 w-4" />
+                  {gifMsg || "Unduh GIF"}
+                </button>
+                {canShare && (
+                  <button
+                    type="button"
+                    onClick={() => void saveGif(true)}
+                    disabled={Boolean(gifMsg)}
+                    aria-label="Bagikan GIF"
+                    className="btn-ghost"
+                  >
+                    <Icon name="share" className="h-4 w-4" />
+                  </button>
+                )}
+              </>
+            )}
+          </div>
+        </footer>
       </div>
     </div>,
     document.body
@@ -3065,10 +3598,15 @@ export function CardStudioButton({
         onClick={() => setOpen(true)}
         className={
           className ??
-          "focus-ring rounded-lg px-2.5 py-1.5 text-xs font-semibold text-muted transition-colors hover:text-ink"
+          "focus-ring inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-muted transition-colors hover:text-ink"
         }
       >
-        {children ?? "Kartu"}
+        {children ?? (
+          <>
+            <Icon name="image" className="h-4 w-4" />
+            Kartu
+          </>
+        )}
       </button>
       {open && <CardStudio data={data} onClose={() => setOpen(false)} />}
     </>

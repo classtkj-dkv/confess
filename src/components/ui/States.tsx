@@ -13,8 +13,8 @@ export function EmptyState({
   action?: ReactNode;
 }) {
   return (
-    <div className="card flex flex-col items-center gap-3 px-6 py-12 text-center">
-      <div className="grid h-14 w-14 place-items-center rounded-2xl bg-surface text-muted">
+    <div className="card flex flex-col items-center gap-3 border-dashed px-6 py-14 text-center">
+      <div className="grid h-16 w-16 place-items-center rounded-2xl bg-primary/10 text-primary ring-8 ring-primary/5">
         <Icon name={icon} className="h-7 w-7" />
       </div>
       <h3 className="text-base font-semibold text-ink">{title}</h3>
@@ -38,9 +38,9 @@ export function ErrorState({
   return (
     <div
       role="alert"
-      className="card flex flex-col items-center gap-3 px-6 py-12 text-center"
+      className="card flex flex-col items-center gap-3 px-6 py-14 text-center"
     >
-      <div className="grid h-14 w-14 place-items-center rounded-2xl bg-danger/10 text-danger">
+      <div className="grid h-16 w-16 place-items-center rounded-2xl bg-danger/10 text-danger ring-8 ring-danger/5">
         <Icon name="xcircle" className="h-7 w-7" />
       </div>
       <h3 className="text-base font-semibold text-ink">{title}</h3>

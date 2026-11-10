@@ -28,7 +28,7 @@ export function SearchBar({ onFocusSearch }: { onFocusSearch?: () => void }) {
         e.preventDefault();
         submit(q);
       }}
-      className="focus-within:ring-2 focus-within:ring-primary/60 relative w-full"
+      className="relative w-full"
     >
       <input
         type="search"
@@ -38,7 +38,7 @@ export function SearchBar({ onFocusSearch }: { onFocusSearch?: () => void }) {
         aria-label="Cari confession"
         maxLength={100}
         onFocus={onFocusSearch}
-        className="input pl-10 !py-2"
+        className="input pl-10 !rounded-full !bg-surface/80 !py-2"
       />
       <svg
         viewBox="0 0 24 24"

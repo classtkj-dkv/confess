@@ -5,6 +5,7 @@ export const CODE_RE = /^\d{4}$/;
 export const TEMPLATE_ID_RE = /^[a-z0-9]{8,12}$/;
 
 export const MAX_DESIGN_BYTES = 60_000;
+export const MAX_BY_CHARS = 30;
 export const MAX_BG_CHARS = 2_400_000;
 export const MAX_FAILED_ATTEMPTS = 8;
 export const LOCK_MS = 30 * 60 * 1000;

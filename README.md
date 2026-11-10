@@ -182,3 +182,11 @@ Isi `OPENROUTER_API_KEY` di Vercel untuk mengaktifkan. Alurnya:
 5. Admin bisa mematikan lewat toggle **Moderasi AI** di panel pengaturan.
 
 Keputusan AI tersimpan di data privat (`confessions/{id}/moderation`). Komentar belum dimoderasi AI.
+
+### Memastikan AI benar-benar bekerja
+- Panel admin → Pengaturan → **Tes koneksi AI**: mengirim dua contoh pesan (satu sopan, satu menghina + data pribadi) dan
+  menampilkan keputusan AI, waktu respons, serta alasan jelas bila gagal (key salah, kredit habis, model tidak ada, dll).
+- Setiap kegagalan AI juga dicatat di log server (cari `[ai-moderation]` di Vercel Logs).
+- Di daftar confession admin, kiriman yang diputuskan AI diberi lencana "AI: menyetujui" atau "AI: serahkan ke moderator".
+- Pengirim diberi tahu bila pesannya dicek moderator karena kuota AI jam itu penuh.
+

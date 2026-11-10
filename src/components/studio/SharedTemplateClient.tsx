@@ -8,11 +8,12 @@ import { Icon } from "@/components/ui/Icon";
 const PENDING_KEY = "studio:pendingTemplate";
 
 /** Halaman link template: penerima memasukkan 4 kode dari pengirim. */
-export function SharedTemplateClient({ id }: { id: string }) {
+export function SharedTemplateClient({ id, by = "" }: { id: string; by?: string }) {
   const [digits, setDigits] = useState(["", "", "", ""]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [name, setName] = useState<string | null>(null);
+  const [owner, setOwner] = useState(by);
   const refs = useRef<(HTMLInputElement | null)[]>([]);
 
   function setDigit(i: number, v: string) {
@@ -45,6 +46,7 @@ export function SharedTemplateClient({ id }: { id: string }) {
         app: "confess-template",
         v: 1,
         name: String(res.name ?? "Template"),
+        by: typeof res.by === "string" ? res.by : "",
         design: res.design,
         bg: typeof res.bg === "string" ? res.bg : null,
       };
@@ -55,6 +57,7 @@ export function SharedTemplateClient({ id }: { id: string }) {
         localStorage.setItem(PENDING_KEY, JSON.stringify({ ...payload, bg: null }));
       }
       setName(payload.name);
+      if (payload.by) setOwner(payload.by);
     } catch (err) {
       setError(err instanceof ApiClientError ? err.message : "Template tidak bisa dibuka.");
     } finally {
@@ -78,7 +81,7 @@ export function SharedTemplateClient({ id }: { id: string }) {
             <>
               <h1 className="mt-5 text-xl font-extrabold tracking-tight text-ink">Template siap dipakai</h1>
               <p className="mt-2 text-sm leading-relaxed text-muted">
-                “{name}” tersimpan di perangkat ini. Buka confession mana saja, ketuk tombol Studio kartu, dan
+                “{name}”{owner ? ` by ${owner}` : ""} tersimpan di perangkat ini. Buka confession mana saja, ketuk tombol Studio kartu, dan
                 template otomatis dibuat ulang dengan isi confession itu.
               </p>
               <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:justify-center">
@@ -89,6 +92,9 @@ export function SharedTemplateClient({ id }: { id: string }) {
           ) : (
             <form onSubmit={submit}>
               <h1 className="mt-5 text-xl font-extrabold tracking-tight text-ink">Template kartu dibagikan</h1>
+              {owner && (
+                <p className="mt-2 text-sm font-semibold text-primary">by {owner}</p>
+              )}
               <p className="mt-2 text-sm leading-relaxed text-muted">
                 Masukkan 4 angka kode dari pengirim untuk membuka template ini.
               </p>

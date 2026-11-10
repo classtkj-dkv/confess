@@ -74,9 +74,29 @@ function parseVerdict(text: string): { verdict: AiVerdict; feedback: string } | 
   }
 }
 
-export async function moderateWithAI(input: AiInput): Promise<AiResult | null> {
+export interface AiDetailed {
+  result: AiResult | null;
+  /** Alasan gagal (kosong bila berhasil). Dipakai untuk log dan tombol "Tes AI" di admin. */
+  error: string;
+  ms: number;
+}
+
+export function aiStatus(): { configured: boolean; model: string } {
+  return {
+    configured: isAiConfigured(),
+    model: (process.env.OPENROUTER_MODEL || DEFAULT_MODEL).trim(),
+  };
+}
+
+export async function moderateDetailed(input: AiInput): Promise<AiDetailed> {
+  const t0 = Date.now();
+  const done = (result: AiResult | null, error: string): AiDetailed => ({
+    result,
+    error,
+    ms: Date.now() - t0,
+  });
   const key = process.env.OPENROUTER_API_KEY;
-  if (!key) return null;
+  if (!key) return done(null, "OPENROUTER_API_KEY belum diisi di environment.");
 
   const primary = (process.env.OPENROUTER_MODEL || DEFAULT_MODEL).trim();
   const fallbacks = (process.env.OPENROUTER_FALLBACK_MODELS ?? DEFAULT_FALLBACK)
@@ -111,21 +131,45 @@ export async function moderateWithAI(input: AiInput): Promise<AiResult | null> {
         ],
       }),
       cache: "no-store",
-      signal: AbortSignal.timeout(15000),
+      signal: AbortSignal.timeout(12000),
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      const body = (await res.text().catch(() => "")).slice(0, 200);
+      const hint =
+        res.status === 401
+          ? " (API key salah/tidak aktif)"
+          : res.status === 402
+            ? " (kredit OpenRouter habis)"
+            : res.status === 404
+              ? " (ID model tidak ditemukan)"
+              : res.status === 429
+                ? " (kena batas permintaan)"
+                : "";
+      return done(null, `OpenRouter HTTP ${res.status}${hint}: ${body}`);
+    }
     const data = (await res.json()) as {
       model?: string;
+      error?: { message?: string };
       choices?: { message?: { content?: unknown } }[];
     };
-    const parsed = parseVerdict(extractText(data.choices?.[0]?.message?.content));
-    if (!parsed) return null;
+    if (data.error) return done(null, `OpenRouter: ${String(data.error.message ?? "error")}`.slice(0, 220));
+    const raw = extractText(data.choices?.[0]?.message?.content);
+    const parsed = parseVerdict(raw);
+    if (!parsed) return done(null, `Jawaban AI tidak bisa dibaca: ${raw.slice(0, 120)}`);
     const feedback =
       parsed.verdict === "revise"
         ? parsed.feedback || "Ada bagian yang kurang pas. Coba tulis ulang dengan lebih sopan ya."
         : "";
-    return { verdict: parsed.verdict, feedback, model: String(data.model ?? primary) };
-  } catch {
-    return null;
+    return done({ verdict: parsed.verdict, feedback, model: String(data.model ?? primary) }, "");
+  } catch (err) {
+    const name = (err as { name?: string }).name;
+    return done(null, name === "TimeoutError" ? "AI tidak membalas dalam 12 detik." : `Gagal menghubungi OpenRouter: ${String(err).slice(0, 120)}`);
   }
+}
+
+/** Dipakai route confession. Gagal → null (moderasi manual), tapi alasannya dicatat di log server. */
+export async function moderateWithAI(input: AiInput): Promise<AiResult | null> {
+  const r = await moderateDetailed(input);
+  if (!r.result && r.error) console.error(`[ai-moderation] ${r.error}`);
+  return r.result;
 }

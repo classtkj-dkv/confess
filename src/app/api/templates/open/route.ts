@@ -20,11 +20,10 @@ export const dynamic = "force-dynamic";
 
 interface Stored {
   name?: string;
+  by?: string;
   design?: string;
   bg?: string | null;
   codeHash?: string;
-  failCount?: number;
-  lockedUntil?: number;
   uses?: number;
 }
 
@@ -59,26 +58,38 @@ export async function POST(req: NextRequest): Promise<Response> {
     if (!snap.exists()) throw new ApiError(404, "Template tidak ditemukan atau sudah dihapus.");
     const t = snap.val() as Stored;
 
-    const now = Date.now();
-    if (typeof t.lockedUntil === "number" && t.lockedUntil > now) {
+    // Hitung percobaan secara ATOMIK (transaction) SEBELUM memeriksa kode, supaya
+    // request paralel tidak bisa melewati batas kode salah (brute force 4 angka).
+    let locked = false;
+    await ref.child("attempts").transaction(
+      (cur: { count?: number; lockedUntil?: number } | null) => {
+        const now = Date.now();
+        const lockedUntil = typeof cur?.lockedUntil === "number" ? cur.lockedUntil : 0;
+        if (lockedUntil > now) {
+          locked = true;
+          return; // abort: masih terkunci
+        }
+        const prev = typeof cur?.count === "number" ? cur.count : 0;
+        const count = prev + 1;
+        if (count > MAX_FAILED_ATTEMPTS) {
+          locked = true;
+          return { count: 0, lockedUntil: now + LOCK_MS };
+        }
+        locked = false;
+        return { count, lockedUntil: 0 };
+      }
+    );
+    if (locked) {
       throw new ApiError(429, "Template dikunci sementara karena terlalu banyak kode salah. Coba lagi nanti.");
     }
 
     if (t.codeHash !== hashCode(id, code)) {
-      const failCount = (typeof t.failCount === "number" ? t.failCount : 0) + 1;
-      const lock = failCount >= MAX_FAILED_ATTEMPTS;
-      await ref.update({
-        failCount: lock ? 0 : failCount,
-        lockedUntil: lock ? now + LOCK_MS : 0,
-      });
       throw new ApiError(403, "Kode salah.", "bad-code");
     }
 
-    await ref.update({
-      failCount: 0,
-      lockedUntil: 0,
-      uses: (typeof t.uses === "number" ? t.uses : 0) + 1,
-    });
+    // Kode benar: reset penghitung percobaan & catat pemakaian.
+    await ref.child("attempts").set({ count: 0, lockedUntil: 0 });
+    await ref.child("uses").transaction((n: number | null) => (typeof n === "number" ? n : 0) + 1);
 
     let design: unknown = null;
     try {
@@ -91,6 +102,7 @@ export async function POST(req: NextRequest): Promise<Response> {
     return Response.json({
       ok: true,
       name: String(t.name ?? "Template"),
+      by: typeof t.by === "string" && t.by ? t.by : "Anonim",
       design,
       bg: typeof t.bg === "string" ? t.bg : null,
     });

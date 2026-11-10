@@ -20,6 +20,8 @@ const RECENT_WINDOW_MS = 30 * 60 * 1000;
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+/** Panggilan AI bisa beberapa detik; jangan sampai kena batas 10 detik bawaan. */
+export const maxDuration = 30;
 
 export async function POST(req: NextRequest): Promise<Response> {
   try {
@@ -120,7 +122,10 @@ export async function POST(req: NextRequest): Promise<Response> {
     // ── Moderasi AI (opsional). Gagal/penuh → otomatis moderasi manual. ──
     let status: "PENDING" | "PUBLISHED" = "PENDING";
     let moderation: Record<string, unknown> | null = null;
+    // Catatan hasil untuk pengirim: none | approved | manual | user-limit | full | error
+    let review = "none";
     if (settings.aiModeration && isAiConfigured()) {
+      review = "error";
       const aiCheck = await checkRateLimit({
         scope: "aicheck",
         uid,
@@ -133,6 +138,8 @@ export async function POST(req: NextRequest): Promise<Response> {
         limit: aiApprovalsPerHour(),
         windowMs: 60 * 60 * 1000,
       };
+      if (!aiCheck.allowed) review = "user-limit";
+      else if (!(await peekRateLimit(approveCfg))) review = "full";
       if (aiCheck.allowed && (await peekRateLimit(approveCfg))) {
         const ai = await moderateWithAI({
           message,
@@ -149,9 +156,13 @@ export async function POST(req: NextRequest): Promise<Response> {
           const slot = await checkRateLimit(approveCfg);
           if (slot.allowed) {
             status = "PUBLISHED";
+            review = "approved";
             moderation = { by: "ai", verdict: "approve", model: ai.model, at: Date.now() };
+          } else {
+            review = "full";
           }
         } else if (ai) {
+          review = "manual";
           moderation = { by: "ai", verdict: "manual", model: ai.model, at: Date.now() };
         }
       }
@@ -202,7 +213,7 @@ export async function POST(req: NextRequest): Promise<Response> {
     });
 
     return Response.json(
-      { ok: true, id, status },
+      { ok: true, id, status, review },
       { status: 201 }
     );
   } catch (err) {

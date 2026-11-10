@@ -147,32 +147,28 @@ export function FeedClient() {
   return (
     <div className="space-y-5">
       <header className="space-y-2">
-        <h1 className="text-xl font-bold text-ink">
+        <h1 className="page-title">
           {searchParam
             ? `Hasil pencarian: "${searchParam}"`
             : category
               ? getCategory(category).label
               : "Feed confession"}
         </h1>
-        <p className="text-sm text-muted">
+        <p className="page-lead max-w-2xl">
           Semua confession di sini sudah melewati moderasi. Identitas penulis
           tidak pernah ditampilkan.
         </p>
       </header>
 
       <div className="space-y-3">
-        <div className="flex gap-2 overflow-x-auto pb-1" role="toolbar" aria-label="Filter feed">
+        <div className="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" role="toolbar" aria-label="Filter feed">
           {FILTERS.map((f) => (
             <button
               key={f.id}
               type="button"
               aria-pressed={filter === f.id}
               onClick={() => setFilter(f.id)}
-              className={`focus-ring shrink-0 rounded-full border px-4 py-1.5 text-xs font-semibold transition-colors ${
-                filter === f.id
-                  ? "border-primary bg-primary/15 text-primary"
-                  : "border-hairline bg-surface text-muted hover:text-ink"
-              }`}
+              className={`chip px-4 py-1.5 text-xs font-semibold`}
             >
               {f.label}
             </button>
@@ -184,23 +180,19 @@ export function FeedClient() {
                 setFilter("latest");
                 router.push(category ? `/feed?category=${category}` : "/feed");
               }}
-              className="focus-ring shrink-0 rounded-full border border-hairline bg-surface px-4 py-1.5 text-xs text-muted"
+              className="chip px-4 py-1.5 text-xs"
             >
               Hapus filter pencarian
             </button>
           )}
         </div>
 
-        <div className="flex gap-2 overflow-x-auto pb-1" role="toolbar" aria-label="Kategori">
+        <div className="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" role="toolbar" aria-label="Kategori">
           <button
             type="button"
             aria-pressed={category === null}
             onClick={() => setCategory(null)}
-            className={`focus-ring shrink-0 rounded-full border px-3 py-1 text-[11px] font-semibold transition-colors ${
-              category === null
-                ? "border-primary bg-primary/15 text-primary"
-                : "border-hairline bg-surface text-muted hover:text-ink"
-            }`}
+            className={`chip px-3 py-1 text-[11px] font-semibold`}
           >
             <Icon name="grid" className="mr-1 inline h-3.5 w-3.5 align-[-2px]" /> Semua kategori
           </button>
@@ -210,11 +202,7 @@ export function FeedClient() {
               type="button"
               aria-pressed={category === c.id}
               onClick={() => setCategory(c.id)}
-              className={`focus-ring shrink-0 rounded-full border px-3 py-1 text-[11px] font-semibold transition-colors ${
-                category === c.id
-                  ? "border-primary bg-primary/15 text-primary"
-                  : "border-hairline bg-surface text-muted hover:text-ink"
-              }`}
+              className={`chip px-3 py-1 text-[11px] font-semibold`}
             >
               <Icon name={c.icon} className="inline h-3.5 w-3.5 align-[-2px]" /> {c.label}
             </button>

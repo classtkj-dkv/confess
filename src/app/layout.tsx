@@ -1,10 +1,13 @@
 import type { Metadata, Viewport } from "next";
+import { Inter } from "next/font/google";
 import "./globals.css";
 import { AppShell } from "@/components/layout/AppShell";
 import { Toaster } from "@/components/ui/Toaster";
 import { AuthProvider } from "@/lib/auth/AuthProvider";
 import { ThemeProvider } from "@/lib/auth/ThemeProvider";
 import { ToastProvider } from "@/lib/auth/ToastProvider";
+
+const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "swap" });
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://confess.example.com";
 
@@ -24,7 +27,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#080F20",
+  themeColor: "#090C16",
   width: "device-width",
   initialScale: 1,
 };
@@ -35,7 +38,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="id" data-theme="dark" suppressHydrationWarning>
+    <html lang="id" data-theme="dark" className={inter.variable} suppressHydrationWarning>
       <body className="antialiased">
         <ThemeProvider>
           <AuthProvider>
