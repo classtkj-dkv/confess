@@ -15,7 +15,7 @@ export interface StudioData {
 type Align = "left" | "center" | "right";
 type Ratio = "story" | "post" | "square";
 type ElId = "title" | "to" | "from" | "message" | "song" | "lyric";
-type SongStyle = "cover" | "pill" | "card" | "cassette" | "text";
+type SongStyle = "vinyl" | "cover" | "pill" | "card" | "cassette" | "text";
 type BgMode = "gen" | "custom" | "image";
 
 const EL_IDS: ElId[] = ["title", "to", "from", "message", "song", "lyric"];
@@ -75,6 +75,7 @@ const SWATCHES = [
 ];
 
 const SONG_STYLES: { id: SongStyle; label: string }[] = [
+  { id: "vinyl", label: "Piringan" },
   { id: "cover", label: "Cover" },
   { id: "pill", label: "Pil" },
   { id: "card", label: "Kartu" },
@@ -106,6 +107,8 @@ interface El {
   shadowBlur: number;
   shadowColor: string;
   songStyle: SongStyle;
+  /** Indikator musik (equalizer) di atas cover. */
+  songEq: boolean;
   fill: string;
   /** Regang vertikal (tinggi). */
   stretch: number;
@@ -431,6 +434,33 @@ function drawBackground(ctx: CanvasRenderingContext2D, W: number, H: number, d: 
   drawDeco(ctx, W, H, d.seed);
 }
 
+const imgIds = new WeakMap<HTMLImageElement, number>();
+let imgSeq = 0;
+let bgCache: { key: string; canvas: HTMLCanvasElement } | null = null;
+
+/** Latar jarang berubah, jadi digambar sekali lalu disalin (animasi tetap ringan). */
+function drawBackgroundCached(ctx: CanvasRenderingContext2D, W: number, H: number, d: Design, bg: HTMLImageElement | null) {
+  let id = 0;
+  if (bg) {
+    id = imgIds.get(bg) ?? ++imgSeq;
+    imgIds.set(bg, id);
+  }
+  const key = [W, H, d.bgMode, d.palette, d.seed, d.bgA, d.bgB, d.bgAngle, d.bgDeco, d.overlay, d.overlayColor, d.bgMode === "image" ? d.color : "", id].join("|");
+  if (!bgCache || bgCache.key !== key) {
+    const c = document.createElement("canvas");
+    c.width = W;
+    c.height = H;
+    const cx = c.getContext("2d");
+    if (!cx) {
+      drawBackground(ctx, W, H, d, bg);
+      return;
+    }
+    drawBackground(cx, W, H, d, bg);
+    bgCache = { key, canvas: c };
+  }
+  ctx.drawImage(bgCache.canvas, 0, 0);
+}
+
 /* ───────────── menggambar elemen ───────────── */
 
 interface Lay {
@@ -452,7 +482,8 @@ function paint(
   H: number,
   dry: boolean,
   yOverride: number | undefined,
-  k: number
+  k: number,
+  phase = 0
 ): { x: number; y: number; w: number; h: number } | null {
   const el = d.els[id];
   const fam = (FONTS.find((f) => f.id === (el.font || d.font)) ?? FONTS[0]).css;
@@ -562,6 +593,27 @@ function paint(
       }
       ctx.restore();
     };
+    /** Indikator musik ala IG: kotak abu-abu dengan batang yang naik-turun. */
+    const eqAt = (ex: number, ey: number, es: number) => {
+      if (dry || !el.songEq) return;
+      ctx.save();
+      roundRect(ctx, ex, ey, es, es, es * 0.18);
+      ctx.fillStyle = "rgba(190,190,190,0.9)";
+      ctx.fill();
+      const freq = [3, 5, 4, 2];
+      const off = [0, 0.25, 0.5, 0.75];
+      const bwid = es * 0.11;
+      const gap = es * 0.09;
+      let bxx = ex + (es - (freq.length * bwid + (freq.length - 1) * gap)) / 2;
+      ctx.fillStyle = "#ffffff";
+      for (let i = 0; i < freq.length; i++) {
+        const hh = es * (0.2 + 0.55 * Math.abs(Math.sin(Math.PI * (freq[i] * phase + off[i]))));
+        roundRect(ctx, bxx, ey + (es - hh) / 2, bwid, hh, bwid / 2);
+        ctx.fill();
+        bxx += bwid + gap;
+      }
+      ctx.restore();
+    };
     const cardAt = (cx: number, cy: number, cw: number, ch: number, r: number) => {
       if (dry) return;
       ctx.save();
@@ -571,7 +623,71 @@ function paint(
       ctx.restore();
     };
 
-    if (style === "text") {
+    if (style === "vinyl") {
+      const dv = Math.min(440 * sc, bw * 0.98);
+      const vx = place(dv);
+      if (!dry) {
+        const R = dv / 2;
+        const vcx = vx + R;
+        const vcy = y + R;
+        ctx.save();
+        const g = ctx.createRadialGradient(vcx, vcy, R * 0.2, vcx, vcy, R);
+        g.addColorStop(0, "#1a1a1a");
+        g.addColorStop(0.6, "#0b0b0b");
+        g.addColorStop(1, "#2b2b2b");
+        ctx.beginPath();
+        ctx.arc(vcx, vcy, R, 0, Math.PI * 2);
+        ctx.fillStyle = g;
+        ctx.fill();
+        ctx.lineWidth = Math.max(1, R * 0.006);
+        for (let r = R * 0.42, n = 0; r < R * 0.97; r += R * 0.035, n++) {
+          ctx.beginPath();
+          ctx.arc(vcx, vcy, r, 0, Math.PI * 2);
+          ctx.strokeStyle = n % 2 ? "rgba(255,255,255,0.07)" : "rgba(255,255,255,0.025)";
+          ctx.stroke();
+        }
+        if (typeof ctx.createConicGradient === "function") {
+          const cg = ctx.createConicGradient(-Math.PI * 0.3, vcx, vcy);
+          cg.addColorStop(0, "rgba(255,255,255,0)");
+          cg.addColorStop(0.08, "rgba(255,255,255,0.22)");
+          cg.addColorStop(0.16, "rgba(255,255,255,0)");
+          cg.addColorStop(0.5, "rgba(255,255,255,0)");
+          cg.addColorStop(0.58, "rgba(255,255,255,0.22)");
+          cg.addColorStop(0.66, "rgba(255,255,255,0)");
+          cg.addColorStop(1, "rgba(255,255,255,0)");
+          ctx.beginPath();
+          ctx.arc(vcx, vcy, R * 0.97, 0, Math.PI * 2);
+          ctx.arc(vcx, vcy, R * 0.42, 0, Math.PI * 2, true);
+          ctx.fillStyle = cg;
+          ctx.fill("evenodd");
+        }
+        // label + cover berputar
+        const lr = R * 0.55;
+        ctx.translate(vcx, vcy);
+        ctx.rotate(phase * Math.PI * 2);
+        ctx.beginPath();
+        ctx.arc(0, 0, lr, 0, Math.PI * 2);
+        ctx.fillStyle = "#ffffff";
+        ctx.fill();
+        ctx.clip();
+        if (cover) ctx.drawImage(cover, -lr, -lr, lr * 2, lr * 2);
+        else {
+          ctx.fillStyle = accent;
+          ctx.fillRect(-lr, -lr, lr * 2, lr * 2);
+        }
+        ctx.restore();
+        ctx.beginPath();
+        ctx.arc(vcx, vcy, R * 0.035, 0, Math.PI * 2);
+        ctx.fillStyle = "#0b0b0b";
+        ctx.fill();
+        ctx.lineWidth = Math.max(1, R * 0.008);
+        ctx.strokeStyle = "rgba(255,255,255,0.4)";
+        ctx.stroke();
+      }
+      y += dv + 24 * sz;
+      y = drawLay(lay(song.title, tp, bw, true), ax, y);
+      if (song.artist) y = drawLay(lay(song.artist, ap, bw, true), ax, y + 4 * sz);
+    } else if (style === "text") {
       const T1 = lay(song.title, tp * 1.1, bw, true);
       const A1 = lay(song.artist || "", ap * 1.1, bw, true);
       y = drawLay(T1, ax, y);
@@ -579,6 +695,7 @@ function paint(
     } else if (style === "cover") {
       const cs = Math.min(300 * sc, bw * 0.95);
       coverAt(place(cs), y, cs, cs * 0.02);
+      eqAt(place(cs) + cs * 0.04, y + cs - cs * 0.26, cs * 0.22);
       y += cs + 22 * sz;
       y = drawLay(lay(song.title, tp, bw, true), ax, y);
       if (song.artist) y = drawLay(lay(song.artist, ap, bw, true), ax, y + 4 * sz);
@@ -592,6 +709,7 @@ function paint(
       const cx = place(cw);
       cardAt(cx, y, cw, ch, pad * 2.2);
       coverAt(cx + pad, y + pad, cs, cs * 0.07);
+      eqAt(cx + pad + cs * 0.04, y + pad + cs - cs * 0.24, cs * 0.2);
       if (!dry) {
         ctx.fillStyle = onCard;
         ctx.textAlign = "center";
@@ -616,6 +734,7 @@ function paint(
       const cx = place(cw);
       cardAt(cx, y, cw, ch, pad * 1.8);
       coverAt(cx + pad, y + (ch - ps) / 2, ps, ps * 0.12);
+      eqAt(cx + pad + ps * 0.05, y + (ch - ps) / 2 + ps - ps * 0.5, ps * 0.45);
       if (!dry) {
         ctx.fillStyle = onCard;
         ctx.textAlign = "left";
@@ -689,7 +808,7 @@ function paint(
           ctx.fill();
           ctx.fillStyle = "#0b0b0b";
           for (let i = 0; i < 6; i++) {
-            const a = (i * Math.PI) / 3;
+            const a = (i * Math.PI) / 3 + phase * Math.PI * 2;
             ctx.beginPath();
             ctx.arc(rx + Math.cos(a) * ph * 0.24, py + ph / 2 + Math.sin(a) * ph * 0.24, ph * 0.05, 0, Math.PI * 2);
             ctx.fill();
@@ -719,9 +838,10 @@ function drawEl(
   H: number,
   dry: boolean,
   yOverride?: number,
-  k = 1
+  k = 1,
+  phase = 0
 ): Box | null {
-  const m = paint(ctx, id, d, c, cover, accent, W, H, true, yOverride, k);
+  const m = paint(ctx, id, d, c, cover, accent, W, H, true, yOverride, k, phase);
   if (!m) return null;
   const el = d.els[id];
   const rot = (el.rotation * Math.PI) / 180;
@@ -741,7 +861,7 @@ function drawEl(
       ctx.shadowBlur = el.shadowBlur * el.size * k;
       ctx.shadowOffsetY = el.shadowBlur * 0.25 * el.size * k;
     }
-    paint(ctx, id, d, c, cover, accent, W, H, false, yOverride, k);
+    paint(ctx, id, d, c, cover, accent, W, H, false, yOverride, k, phase);
     ctx.restore();
   }
   return { ...m, rot, sy: el.stretch };
@@ -754,18 +874,19 @@ function renderCard(
   bg: HTMLImageElement | null,
   cover: HTMLImageElement | null,
   accent: string,
-  guides: { selected: ElId | null; snapX: boolean; snapY: boolean; unit: number } | null
+  guides: { selected: ElId | null; snapX: boolean; snapY: boolean; unit: number } | null,
+  phase = 0
 ): Boxes {
   const { w: W, h: H } = SIZES[d.ratio];
-  canvas.width = W;
-  canvas.height = H;
+  if (canvas.width !== W) canvas.width = W;
+  if (canvas.height !== H) canvas.height = H;
   const ctx = canvas.getContext("2d");
   if (!ctx) return {};
-  drawBackground(ctx, W, H, d, bg);
+  drawBackgroundCached(ctx, W, H, d, bg);
   const boxes: Boxes = {};
   for (const id of d.order) {
     if (!d.els[id].visible) continue;
-    const b = drawEl(ctx, id, d, c, cover, accent, W, H, false);
+    const b = drawEl(ctx, id, d, c, cover, accent, W, H, false, undefined, 1, phase);
     if (b) boxes[id] = b;
   }
   if (guides) {
@@ -888,7 +1009,8 @@ function baseEl(): El {
     strokeColor: "#000000",
     shadowBlur: 0,
     shadowColor: "#000000",
-    songStyle: "card",
+    songStyle: "vinyl",
+    songEq: true,
     fill: "",
     stretch: 1,
     songText: 1,
@@ -964,7 +1086,8 @@ function sanitizeEl(raw: unknown, def: El): El {
     strokeColor: colReq(r.strokeColor, def.strokeColor),
     shadowBlur: num(r.shadowBlur, 0, 60, def.shadowBlur),
     shadowColor: colReq(r.shadowColor, def.shadowColor),
-    songStyle: pick(r.songStyle, ["cover", "pill", "card", "cassette", "text"] as const, def.songStyle),
+    songStyle: pick(r.songStyle, ["vinyl", "cover", "pill", "card", "cassette", "text"] as const, def.songStyle),
+    songEq: bool(r.songEq, def.songEq),
     fill: colAuto(r.fill, def.fill),
     stretch: num(r.stretch, 0.2, 4, def.stretch),
     songText: num(r.songText, 0.2, 2, def.songText),
@@ -1077,6 +1200,229 @@ async function dbRun<T>(mode: IDBTransactionMode, fn: (store: IDBObjectStore) =>
 async function listTemplates(): Promise<Template[]> {
   const all = await dbRun<Template[]>("readonly", (s) => s.getAll() as IDBRequest<Template[]>);
   return all.sort((a, b) => b.updatedAt - a.updatedAt);
+}
+
+/* ───────────── encoder GIF (tanpa library) ───────────── */
+
+class Bytes {
+  private buf = new Uint8Array(1 << 20);
+  n = 0;
+  private grow(extra: number) {
+    if (this.n + extra <= this.buf.length) return;
+    let size = this.buf.length * 2;
+    while (size < this.n + extra) size *= 2;
+    const nb = new Uint8Array(size);
+    nb.set(this.buf.subarray(0, this.n));
+    this.buf = nb;
+  }
+  byte(b: number) {
+    this.grow(1);
+    this.buf[this.n++] = b & 255;
+  }
+  u16(v: number) {
+    this.byte(v & 255);
+    this.byte(v >> 8);
+  }
+  str(t: string) {
+    for (let i = 0; i < t.length; i++) this.byte(t.charCodeAt(i));
+  }
+  bytes(a: Uint8Array, len = a.length) {
+    this.grow(len);
+    this.buf.set(a.subarray(0, len), this.n);
+    this.n += len;
+  }
+  done(): ArrayBuffer {
+    return this.buf.slice(0, this.n).buffer as ArrayBuffer;
+  }
+}
+
+/** Median cut: palet 256 warna dari sampel piksel (r<<16|g<<8|b). */
+function medianCut(px: Uint32Array, nColors: number): Uint8Array {
+  interface B {
+    s: number;
+    e: number;
+    sh: number;
+    range: number;
+  }
+  const rangeOf = (s: number, e: number): { sh: number; range: number } => {
+    let rmin = 255;
+    let rmax = 0;
+    let gmin = 255;
+    let gmax = 0;
+    let bmin = 255;
+    let bmax = 0;
+    for (let i = s; i < e; i++) {
+      const v = px[i];
+      const r = (v >> 16) & 255;
+      const g = (v >> 8) & 255;
+      const b = v & 255;
+      if (r < rmin) rmin = r;
+      if (r > rmax) rmax = r;
+      if (g < gmin) gmin = g;
+      if (g > gmax) gmax = g;
+      if (b < bmin) bmin = b;
+      if (b > bmax) bmax = b;
+    }
+    const rr = rmax - rmin;
+    const gr = gmax - gmin;
+    const br = bmax - bmin;
+    if (rr >= gr && rr >= br) return { sh: 16, range: rr };
+    if (gr >= br) return { sh: 8, range: gr };
+    return { sh: 0, range: br };
+  };
+  const boxes: B[] = [{ s: 0, e: px.length, ...rangeOf(0, px.length) }];
+  while (boxes.length < nColors) {
+    let bi = -1;
+    let best = 0;
+    for (let i = 0; i < boxes.length; i++) {
+      const b = boxes[i];
+      if (b.e - b.s > 1 && b.range > best) {
+        best = b.range;
+        bi = i;
+      }
+    }
+    if (bi < 0) break;
+    const b = boxes[bi];
+    const sh = b.sh;
+    px.subarray(b.s, b.e).sort((x, y) => ((x >> sh) & 255) - ((y >> sh) & 255));
+    const mid = (b.s + b.e) >> 1;
+    boxes.splice(
+      bi,
+      1,
+      { s: b.s, e: mid, ...rangeOf(b.s, mid) },
+      { s: mid, e: b.e, ...rangeOf(mid, b.e) }
+    );
+  }
+  const pal = new Uint8Array(256 * 3);
+  boxes.forEach((b, i) => {
+    let r = 0;
+    let g = 0;
+    let bl = 0;
+    const n = Math.max(1, b.e - b.s);
+    for (let j = b.s; j < b.e; j++) {
+      const v = px[j];
+      r += (v >> 16) & 255;
+      g += (v >> 8) & 255;
+      bl += v & 255;
+    }
+    pal[i * 3] = Math.round(r / n);
+    pal[i * 3 + 1] = Math.round(g / n);
+    pal[i * 3 + 2] = Math.round(bl / n);
+  });
+  return pal;
+}
+
+/** Tabel 5-5-5 bit → indeks warna palet terdekat (pemetaan piksel jadi cepat). */
+function buildLut(pal: Uint8Array): Uint8Array {
+  const lut = new Uint8Array(32768);
+  for (let c = 0; c < 32768; c++) {
+    const r = ((c >> 10) & 31) * 8 + 4;
+    const g = ((c >> 5) & 31) * 8 + 4;
+    const b = (c & 31) * 8 + 4;
+    let best = 0;
+    let bd = Infinity;
+    for (let i = 0; i < 256; i++) {
+      const dr = r - pal[i * 3];
+      const dg = g - pal[i * 3 + 1];
+      const db = b - pal[i * 3 + 2];
+      const d = dr * dr + dg * dg + db * db;
+      if (d < bd) {
+        bd = d;
+        best = i;
+      }
+    }
+    lut[c] = best;
+  }
+  return lut;
+}
+
+const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
+
+/** RGBA → indeks palet, dengan dithering terurut agar gradasi tidak bergaris. */
+function quantize(rgba: Uint8ClampedArray, w: number, h: number, lut: Uint8Array): Uint8Array {
+  const out = new Uint8Array(w * h);
+  let o = 0;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++, o++) {
+      const t = (BAYER[((y & 3) << 2) | (x & 3)] - 7.5) * 1.6;
+      const i = o * 4;
+      const r = clamp(rgba[i] + t, 0, 255) >> 3;
+      const g = clamp(rgba[i + 1] + t, 0, 255) >> 3;
+      const b = clamp(rgba[i + 2] + t, 0, 255) >> 3;
+      out[o] = lut[(r << 10) | (g << 5) | b];
+    }
+  }
+  return out;
+}
+
+let lzwStamp: Int32Array | null = null;
+let lzwVal: Int32Array | null = null;
+let lzwGen = 0;
+
+function lzwEncode(idx: Uint8Array, out: Bytes) {
+  if (!lzwStamp || !lzwVal) {
+    lzwStamp = new Int32Array(1 << 20);
+    lzwVal = new Int32Array(1 << 20);
+  }
+  const stamp = lzwStamp;
+  const val = lzwVal;
+  const CLEAR = 256;
+  const EOI = 257;
+  out.byte(8);
+  const block = new Uint8Array(255);
+  let bl = 0;
+  const putByte = (b: number) => {
+    block[bl++] = b;
+    if (bl === 255) {
+      out.byte(255);
+      out.bytes(block, 255);
+      bl = 0;
+    }
+  };
+  let cur = 0;
+  let shift = 0;
+  let size = 9;
+  let next = 258;
+  const emit = (code: number) => {
+    cur |= code << shift;
+    shift += size;
+    while (shift >= 8) {
+      putByte(cur & 255);
+      cur >>>= 8;
+      shift -= 8;
+    }
+  };
+  lzwGen++;
+  emit(CLEAR);
+  let prefix = idx[0];
+  for (let i = 1; i < idx.length; i++) {
+    const k = idx[i];
+    const key = (prefix << 8) | k;
+    if (stamp[key] === lzwGen) {
+      prefix = val[key];
+      continue;
+    }
+    emit(prefix);
+    if (next === 4096) {
+      emit(CLEAR);
+      lzwGen++;
+      next = 258;
+      size = 9;
+    } else {
+      if (next >= 1 << size) size++;
+      stamp[key] = lzwGen;
+      val[key] = next++;
+    }
+    prefix = k;
+  }
+  emit(prefix);
+  emit(EOI);
+  if (shift > 0) putByte(cur & 255);
+  if (bl > 0) {
+    out.byte(bl);
+    out.bytes(block, bl);
+  }
+  out.byte(0);
 }
 
 /* ───────────── komponen kecil ───────────── */
@@ -1242,6 +1588,12 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
   const [fontTick, setFontTick] = useState(0);
   const [zoom, setZoom] = useState(1);
   const [histTick, setHistTick] = useState(0);
+  const [playing, setPlaying] = useState(true);
+  const [gifW, setGifW] = useState(480);
+  const [gifMsg, setGifMsg] = useState("");
+  const phaseRef = useRef(0);
+  const gifBusyRef = useRef(false);
+  const renderRef = useRef<() => void>(() => undefined);
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const boxesRef = useRef<Boxes>({});
@@ -1271,6 +1623,13 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
   const [tplBusy, setTplBusy] = useState(false);
 
   const song = content.song;
+  const songEl = design.els.song;
+  const isAnimated =
+    Boolean(song) &&
+    songEl.visible &&
+    (songEl.songStyle === "vinyl" ||
+      songEl.songStyle === "cassette" ||
+      (songEl.songEq && (songEl.songStyle === "cover" || songEl.songStyle === "pill" || songEl.songStyle === "card")));
 
   const setD = (patch: Partial<Design>) => setDesign((p) => ({ ...p, ...patch }));
   const setEl = (id: ElId, patch: Partial<El>) =>
@@ -1354,19 +1713,43 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
     };
   }, [onClose]);
 
-  /* gambar ulang setiap ada perubahan */
-  useEffect(() => {
+  /* gambar ulang: dipakai efek perubahan dan loop animasi */
+  renderRef.current = () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const rect = canvas.getBoundingClientRect();
     const unit = rect.width > 0 ? SIZES[design.ratio].w / rect.width : 3;
-    boxesRef.current = renderCard(canvas, design, content, bgImg, cover, accent, {
-      selected,
-      snapX: snap.x,
-      snapY: snap.y,
-      unit,
-    });
+    boxesRef.current = renderCard(
+      canvas,
+      design,
+      content,
+      bgImg,
+      cover,
+      accent,
+      { selected, snapX: snap.x, snapY: snap.y, unit },
+      phaseRef.current
+    );
+  };
+  useEffect(() => {
+    renderRef.current();
   }, [design, content, bgImg, cover, accent, selected, snap, zoom, fontTick]);
+
+  /* animasi pratinjau (piringan berputar, equalizer): ~30 fps, berhenti bila tidak ada yang bergerak */
+  useEffect(() => {
+    if (!playing || !isAnimated) return;
+    let raf = 0;
+    let last = 0;
+    const loop = (now: number) => {
+      if (!gifBusyRef.current && now - last >= 33) {
+        last = now;
+        phaseRef.current = (now / 3000) % 1;
+        renderRef.current();
+      }
+      raf = requestAnimationFrame(loop);
+    };
+    raf = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(raf);
+  }, [playing, isAnimated]);
 
   /* riwayat undo/redo: perubahan beruntun digabung (jeda 350 ms) */
   useEffect(() => {
@@ -1656,7 +2039,7 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
     return new Promise((resolve) => {
       try {
         const c = document.createElement("canvas");
-        renderCard(c, designRef.current, content, bgImg, cover, accent, null);
+        renderCard(c, designRef.current, content, bgImg, cover, accent, null, phaseRef.current);
         c.toBlob((b) => resolve(b), "image/png");
       } catch {
         resolve(null);
@@ -1690,6 +2073,117 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
       await navigator.share({ files: [new File([blob], "menfess.png", { type: "image/png" })] });
     } catch {
       /* dibatalkan */
+    }
+  }
+
+  /* ── GIF animasi (satu putaran penuh = satu loop, jadi mulus) ── */
+  async function makeGif(): Promise<Blob | null> {
+    const d = designRef.current;
+    const { w: W, h: H } = SIZES[d.ratio];
+    const outW = gifW;
+    const outH = Math.max(2, Math.round((outW * H) / W));
+    const N = 40;
+    const full = document.createElement("canvas");
+    const small = document.createElement("canvas");
+    small.width = outW;
+    small.height = outH;
+    const sctx = small.getContext("2d", { willReadFrequently: true });
+    if (!sctx) return null;
+    sctx.imageSmoothingEnabled = true;
+    sctx.imageSmoothingQuality = "high";
+    const grab = (i: number) => {
+      renderCard(full, d, content, bgImg, cover, accent, null, i / N);
+      sctx.drawImage(full, 0, 0, outW, outH);
+      return sctx.getImageData(0, 0, outW, outH).data;
+    };
+    gifBusyRef.current = true;
+    try {
+      // 1) palet global dari beberapa frame contoh
+      const stride = Math.max(1, Math.floor((outW * outH) / 9000));
+      const samples: number[] = [];
+      for (const i of [0, 7, 14, 21, 28, 35]) {
+        const px = grab(i);
+        for (let q = 0; q < outW * outH; q += stride) {
+          const o = q * 4;
+          samples.push((px[o] << 16) | (px[o + 1] << 8) | px[o + 2]);
+        }
+      }
+      const palette = medianCut(Uint32Array.from(samples), 256);
+      const lut = buildLut(palette);
+
+      // 2) tulis tiap frame langsung (hemat memori)
+      const out = new Bytes();
+      out.str("GIF89a");
+      out.u16(outW);
+      out.u16(outH);
+      out.byte(0xf7);
+      out.byte(0);
+      out.byte(0);
+      out.bytes(palette);
+      out.byte(0x21);
+      out.byte(0xff);
+      out.byte(11);
+      out.str("NETSCAPE2.0");
+      out.byte(3);
+      out.byte(1);
+      out.u16(0);
+      out.byte(0);
+      for (let i = 0; i < N; i++) {
+        setGifMsg(`Membuat GIF… ${i + 1}/${N}`);
+        await new Promise((r) => setTimeout(r, 0));
+        const idx = quantize(grab(i), outW, outH, lut);
+        out.byte(0x21);
+        out.byte(0xf9);
+        out.byte(4);
+        out.byte(0x04);
+        out.u16(8);
+        out.byte(0);
+        out.byte(0);
+        out.byte(0x2c);
+        out.u16(0);
+        out.u16(0);
+        out.u16(outW);
+        out.u16(outH);
+        out.byte(0);
+        lzwEncode(idx, out);
+      }
+      out.byte(0x3b);
+      return new Blob([out.done()], { type: "image/gif" });
+    } finally {
+      gifBusyRef.current = false;
+    }
+  }
+
+  async function saveGif(share: boolean) {
+    if (gifMsg) return;
+    setError("");
+    setInfo(isAnimated ? "" : "Pilih gaya Piringan atau Kaset, atau aktifkan indikator musik, supaya GIF bergerak.");
+    try {
+      setGifMsg("Menyiapkan GIF…");
+      const blob = await makeGif();
+      if (!blob) throw new Error("gif");
+      const file = new File([blob], `menfess-${Date.now()}.gif`, { type: "image/gif" });
+      if (share && navigator.canShare?.({ files: [file] })) {
+        try {
+          await navigator.share({ files: [file] });
+          return;
+        } catch (e) {
+          if ((e as { name?: string }).name === "AbortError") return;
+        }
+      }
+      const url = URL.createObjectURL(file);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = file.name;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setInfo(`GIF tersimpan (${(file.size / 1024 / 1024).toFixed(1)} MB).`);
+    } catch {
+      setError("GIF gagal dibuat. Coba ukuran yang lebih kecil.");
+    } finally {
+      setGifMsg("");
     }
   }
 
@@ -1997,6 +2491,16 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
               <button type="button" onClick={() => setZoom(1)} className="btn-ghost px-2 py-1 text-xs">
                 {Math.round(zoom * 100)}%
               </button>
+              <button
+                type="button"
+                onClick={() => setPlaying((v) => !v)}
+                aria-pressed={playing}
+                aria-label={playing ? "Jeda animasi" : "Putar animasi"}
+                title={playing ? "Jeda animasi" : "Putar animasi"}
+                className="btn-ghost px-2.5 py-1 text-sm"
+              >
+                {playing ? "⏸" : "▶"}
+              </button>
             </div>
             <div
               ref={scrollRef}
@@ -2036,6 +2540,37 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
               </button>
               {canShare && (
                 <button type="button" onClick={() => void shareImage()} className="btn-ghost flex-1">
+                  Bagikan
+                </button>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              <select
+                value={gifW}
+                onChange={(e) => setGifW(Number(e.target.value))}
+                aria-label="Ukuran GIF"
+                disabled={Boolean(gifMsg)}
+                className="input w-auto py-1.5 text-xs"
+              >
+                <option value={360}>GIF kecil</option>
+                <option value={480}>GIF sedang</option>
+                <option value={640}>GIF besar</option>
+              </select>
+              <button
+                type="button"
+                onClick={() => void saveGif(false)}
+                disabled={Boolean(gifMsg)}
+                className="btn-ghost flex-1 disabled:opacity-60"
+              >
+                {gifMsg || "Unduh GIF"}
+              </button>
+              {canShare && (
+                <button
+                  type="button"
+                  onClick={() => void saveGif(true)}
+                  disabled={Boolean(gifMsg)}
+                  className="btn-ghost disabled:opacity-60"
+                >
                   Bagikan
                 </button>
               )}
@@ -2373,6 +2908,9 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
                       />
                       <Range label="Ukuran teks lagu" value={sel.songText} min={0.2} max={2} step={0.05} onChange={(v) => setEl(selected, { songText: v })} />
                       <Range label="Ukuran cover / kaset" value={sel.songCover} min={0.2} max={2} step={0.05} onChange={(v) => setEl(selected, { songCover: v })} />
+                      {(sel.songStyle === "cover" || sel.songStyle === "pill" || sel.songStyle === "card") && (
+                        <Toggle label="Indikator musik (equalizer)" checked={sel.songEq} onChange={(v) => setEl(selected, { songEq: v })} />
+                      )}
                     </div>
                   )}
 
