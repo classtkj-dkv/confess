@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Icon, type IconName } from "@/components/ui/Icon";
 import type { Song } from "@/types";
+import { ApiClientError, api } from "@/lib/api";
 
 export interface StudioData {
   fromName?: string;
@@ -1231,6 +1232,7 @@ async function shrinkImage(blob: Blob, maxEdge: number, quality: number): Promis
 const DB_NAME = "confess-studio";
 const STORE = "templates";
 const LAST_KEY = "studio:lastTemplate";
+const PENDING_KEY = "studio:pendingTemplate";
 const MAX_IMPORT_BYTES = 10 * 1024 * 1024;
 
 function openDb(): Promise<IDBDatabase> {
@@ -1775,6 +1777,12 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
   const [activeId, setActiveId] = useState<string | null>(null);
   const [tplName, setTplName] = useState("");
   const [tplBusy, setTplBusy] = useState(false);
+  /* bagikan lewat link + 4 kode */
+  const [shareCode, setShareCode] = useState("");
+  const [shareResult, setShareResult] = useState<{ link: string; code: string; name: string } | null>(null);
+  const [linkInput, setLinkInput] = useState("");
+  const [linkCode, setLinkCode] = useState("");
+  const pendingFlag = useRef(false);
 
   const song = content.song;
   const songEl = design.els.song;
@@ -1984,7 +1992,7 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
           /* abaikan */
         }
         const last = list.find((t) => t.id === lastId);
-        if (last) await applyTemplate(last, true);
+        if (last && !pendingFlag.current) await applyTemplate(last, true);
       } catch {
         /* IndexedDB tidak tersedia: studio tetap jalan tanpa template */
       }
@@ -1992,6 +2000,32 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /* template dari link (/t/[id]) yang menunggu dipakai */
+  useEffect(() => {
+    let raw: string | null = null;
+    try {
+      raw = localStorage.getItem(PENDING_KEY);
+    } catch {
+      raw = null;
+    }
+    if (!raw) return;
+    pendingFlag.current = true;
+    try {
+      localStorage.removeItem(PENDING_KEY);
+    } catch {
+      /* abaikan */
+    }
+    try {
+      const obj = JSON.parse(raw) as Partial<TemplateFile>;
+      if (obj?.app !== "confess-template" || obj.v !== 1) return;
+      setTab("template");
+      void importPayload(obj, true);
+    } catch {
+      /* abaikan */
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -2172,6 +2206,15 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
     try {
       const obj = JSON.parse(await file.text()) as Partial<TemplateFile>;
       if (obj?.app !== "confess-template" || obj.v !== 1) throw new Error("format");
+      await importPayload(obj);
+    } catch {
+      setError("File template tidak valid.");
+    }
+  }
+
+  /** Dipakai impor file, impor lewat link, dan template tertunda dari halaman /t/[id]. */
+  async function importPayload(obj: Partial<TemplateFile>, silent = false) {
+    try {
       const base = defaultDesign(initialContent, Boolean(data.songLyric));
       const design = sanitizeDesign(obj.design, base);
       let bg: Blob | null = null;
@@ -2199,9 +2242,95 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
       await dbRun("readwrite", (s) => s.put(t));
       setTemplates(await listTemplates());
       await applyTemplate(t);
-      setInfo(`Template "${t.name}" berhasil diimpor.`);
+      if (!silent) setInfo(`Template "${t.name}" berhasil diimpor.`);
+      else setInfo(`Template "${t.name}" dari link sudah siap dipakai.`);
     } catch {
-      setError("File template tidak valid.");
+      setError("Template tidak valid.");
+    }
+  }
+
+  /* ── bagikan lewat link + kode 4 digit dari pengirim ── */
+  async function shareTemplateLink(t: Template) {
+    setError("");
+    setInfo("");
+    const code = shareCode.trim();
+    if (code && !/^\d{4}$/.test(code)) {
+      setError("Kode harus tepat 4 angka (atau kosongkan agar dibuat otomatis).");
+      return;
+    }
+    setTplBusy(true);
+    try {
+      const bg = t.bg ? await blobToDataUrl(await shrinkImage(t.bg, 1400, 0.82)) : null;
+      const res = await api("/api/templates", { body: { name: t.name, design: t.design, bg, code: code || undefined } });
+      setShareResult({
+        link: `${window.location.origin}/t/${String(res.id)}`,
+        code: String(res.code),
+        name: t.name,
+      });
+      setShareCode("");
+    } catch (err) {
+      setError(err instanceof ApiClientError ? err.message : "Link template gagal dibuat.");
+    } finally {
+      setTplBusy(false);
+    }
+  }
+
+  async function copyText(label: string, value: string) {
+    try {
+      await navigator.clipboard.writeText(value);
+      setInfo(`${label} disalin.`);
+    } catch {
+      setInfo(`${label}: ${value}`);
+    }
+  }
+
+  async function sendShareResult() {
+    if (!shareResult) return;
+    const msg = `Template kartu CONFESS "${shareResult.name}"\nLink: ${shareResult.link}\nKode: ${shareResult.code}`;
+    try {
+      if (typeof navigator.share === "function") {
+        await navigator.share({ title: shareResult.name, text: msg });
+        return;
+      }
+    } catch (e) {
+      if ((e as { name?: string }).name === "AbortError") return;
+    }
+    await copyText("Link & kode", msg);
+  }
+
+  async function importFromLink() {
+    setError("");
+    setInfo("");
+    const last = linkInput.trim().split(/[?#]/)[0].replace(/\/+$/, "").split("/").pop() ?? "";
+    const m = /^[a-z0-9]{8,12}$/i.exec(last);
+    const id = m ? m[0].toLowerCase() : "";
+    if (!id) {
+      setError("Tempel link template dari pengirim.");
+      return;
+    }
+    if (!/^\d{4}$/.test(linkCode.trim())) {
+      setError("Masukkan 4 angka kode dari pengirim.");
+      return;
+    }
+    setTplBusy(true);
+    try {
+      const res = await api("/api/templates/open", { body: { id, code: linkCode.trim() } });
+      await importPayload(
+        {
+          app: "confess-template",
+          v: 1,
+          name: String(res.name ?? "Template"),
+          design: res.design as Design,
+          bg: typeof res.bg === "string" ? res.bg : null,
+        },
+        true
+      );
+      setLinkInput("");
+      setLinkCode("");
+    } catch (err) {
+      setError(err instanceof ApiClientError ? err.message : "Template tidak bisa dibuka.");
+    } finally {
+      setTplBusy(false);
     }
   }
 
@@ -2828,7 +2957,7 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
                     onClick={() => void shareTemplate(active)}
                     className="btn-ghost px-3 py-1.5 text-xs"
                   >
-                    Bagikan template
+                    Bagikan file
                   </button>
                 )}
                 <label className="btn-ghost cursor-pointer px-3 py-1.5 text-xs">
@@ -2845,9 +2974,82 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
                   />
                 </label>
               </div>
+              {active && (
+                <div className="space-y-2 rounded-xl border border-hairline bg-surface/60 p-3">
+                  <p className="text-xs font-semibold text-ink">Bagikan lewat link + kode</p>
+                  <div className="flex flex-wrap gap-2">
+                    <input
+                      value={shareCode}
+                      onChange={(e) => setShareCode(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                      inputMode="numeric"
+                      maxLength={4}
+                      placeholder="Kode 4 angka (opsional)"
+                      aria-label="Kode 4 angka dari pengirim"
+                      className="input min-w-0 flex-1 py-1.5 text-xs tracking-widest"
+                    />
+                    <button
+                      type="button"
+                      disabled={tplBusy}
+                      onClick={() => void shareTemplateLink(active)}
+                      className="btn-primary px-3 py-1.5 text-xs"
+                    >
+                      Buat link
+                    </button>
+                  </div>
+                  {shareResult && (
+                    <div className="space-y-2 rounded-lg border border-primary/30 bg-primary/10 p-2.5 text-xs">
+                      <p className="break-all font-mono text-ink">{shareResult.link}</p>
+                      <p className="text-ink">
+                        Kode: <strong className="font-mono text-base tracking-[0.3em]">{shareResult.code}</strong>
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        <button type="button" onClick={() => void copyText("Link", shareResult.link)} className="btn-ghost px-3 py-1 text-xs">
+                          Salin link
+                        </button>
+                        <button type="button" onClick={() => void copyText("Kode", shareResult.code)} className="btn-ghost px-3 py-1 text-xs">
+                          Salin kode
+                        </button>
+                        <button type="button" onClick={() => void sendShareResult()} className="btn-primary px-3 py-1 text-xs">
+                          Kirim
+                        </button>
+                      </div>
+                      <p className="text-muted">Kirim link dan kode ke penerima. Tanpa kode, template tidak bisa dibuka.</p>
+                    </div>
+                  )}
+                </div>
+              )}
+              <div className="space-y-2 rounded-xl border border-hairline bg-surface/60 p-3">
+                <p className="text-xs font-semibold text-ink">Pakai template dari link</p>
+                <input
+                  value={linkInput}
+                  onChange={(e) => setLinkInput(e.target.value)}
+                  placeholder="Tempel link template"
+                  aria-label="Link template dari pengirim"
+                  className="input py-1.5 text-xs"
+                />
+                <div className="flex gap-2">
+                  <input
+                    value={linkCode}
+                    onChange={(e) => setLinkCode(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                    inputMode="numeric"
+                    maxLength={4}
+                    placeholder="4 kode"
+                    aria-label="4 angka kode dari pengirim"
+                    className="input min-w-0 flex-1 py-1.5 text-xs tracking-widest"
+                  />
+                  <button
+                    type="button"
+                    disabled={tplBusy}
+                    onClick={() => void importFromLink()}
+                    className="btn-primary px-3 py-1.5 text-xs"
+                  >
+                    Pakai & buat ulang
+                  </button>
+                </div>
+              </div>
               <p className="text-[11px] text-muted">
-                Menyimpan latar foto, posisi, ukuran, gaya, dan warna. Tersimpan di perangkat ini saja. Untuk
-                HP lain: Bagikan template, kirim filenya, lalu Impor di sana.
+                Menyimpan latar foto, posisi, ukuran, gaya, dan warna. Tersimpan di perangkat ini. Untuk HP
+                lain: buat link + kode, atau kirim file template lalu Impor.
               </p>
             </section>
               )}

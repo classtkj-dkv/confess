@@ -64,4 +64,6 @@ export const RATE_LIMITS = {
   aiCheckPerHour: { limit: 4, windowMs: 60 * 60 * 1000 },
   songSearch: { limit: 60, windowMs: 10 * 60 * 1000 },
   reportPerDay: { limit: 10, windowMs: 24 * 60 * 60 * 1000 },
+  templateShare: { limit: 15, windowMs: 24 * 60 * 60 * 1000 },
+  templateOpen: { limit: 40, windowMs: 60 * 60 * 1000 },
 } as const;

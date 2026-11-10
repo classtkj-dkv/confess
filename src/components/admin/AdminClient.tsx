@@ -4,7 +4,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { onValue, ref } from "firebase/database";
 import { getRtdb } from "@/lib/firebase/client";
 import { isAdminRole } from "@/lib/auth/roles";
-import type { UserRole } from "@/types";
+import type { Song, UserRole } from "@/types";
+import { SongCard } from "@/components/songs/SongCard";
 import Link from "next/link";
 import { api, ApiClientError } from "@/lib/api";
 import { useAuth } from "@/lib/auth/AuthProvider";
@@ -71,6 +72,10 @@ interface AdminConfessionRow {
   likesCount: number;
   commentsCount: number;
   ai?: string;
+  fromName?: string;
+  toName?: string;
+  song?: Song | null;
+  songLyric?: string;
 }
 
 interface AdminCommentRow {
@@ -174,26 +179,24 @@ export function AdminClient() {
   return (
     <div className="space-y-6">
       <header>
-        <p className="badge">Kelola CONFESS</p>
-        <h1 className="mt-2 text-xl font-bold text-ink">Admin Dashboard</h1>
-        <p className="mt-1 text-sm text-muted">
+        <p className="badge border-primary/25 bg-primary/10 !text-primary">
+          <Icon name="shield" className="h-3.5 w-3.5" /> Kelola CONFESS
+        </p>
+        <h1 className="page-title mt-3">Admin Dashboard</h1>
+        <p className="page-lead mt-1.5">
           Sesi: <strong className="font-mono">{shortUid(uid)}</strong> · role:{" "}
           <RoleBadge role={role} />
         </p>
       </header>
 
-      <div role="toolbar" aria-label="Menu admin" className="flex gap-2 overflow-x-auto pb-1">
+      <div role="toolbar" aria-label="Menu admin" className="card flex gap-1.5 overflow-x-auto p-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {visibleTabs.map((t) => (
           <button
             key={t.id}
             type="button"
             aria-pressed={tab === t.id}
             onClick={() => setTab(t.id)}
-            className={`focus-ring shrink-0 rounded-full border px-3.5 py-1.5 text-xs font-semibold transition-colors ${
-              tab === t.id
-                ? "border-primary bg-primary/15 text-primary"
-                : "border-hairline bg-surface text-muted hover:text-ink"
-            }`}
+            className="chip px-3.5 py-1.5 text-xs font-semibold"
           >
             <Icon name={t.icon} className="mr-1 inline h-3.5 w-3.5 align-[-2px]" /> {t.label}
           </button>
@@ -267,9 +270,9 @@ function AdminSection({
   switch (tab) {
     case "overview":
       return loadingStats ? (
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">{StatSkeletonSkeletonList()}</div>
+        <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">{StatSkeletonSkeletonList()}</div>
       ) : stats ? (
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+        <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
           <StatCard label="Total confession" value={stats.totalConfessions} />
           <StatCard label="Pending" value={stats.pendingConfessions} accent />
           <StatCard label="Published" value={stats.publishedConfessions} />
@@ -311,6 +314,17 @@ function AdminSection({
   }
 }
 
+const STAT_ICONS: Record<string, IconName> = {
+  "Total confession": "file",
+  Pending: "clock",
+  Published: "check",
+  Rejected: "xcircle",
+  "Total komentar": "message",
+  "Laporan aktif": "flag",
+  "Akun terdaftar": "users",
+  "Confession 7 hari": "chart",
+};
+
 function StatCard({
   label,
   value,
@@ -321,10 +335,26 @@ function StatCard({
   accent?: boolean;
 }) {
   return (
-    <div className="card p-5" data-accent={accent ? "1" : undefined}>
-      <p className="text-xs text-muted">{label}</p>
+    <div className="card card-interactive relative overflow-hidden p-4 sm:p-5" data-accent={accent ? "1" : undefined}>
+      {accent && (
+        <span
+          aria-hidden
+          className="absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r from-primary to-secondary"
+        />
+      )}
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-xs font-medium text-muted">{label}</p>
+        <span
+          aria-hidden
+          className={`grid h-8 w-8 place-items-center rounded-lg ${
+            accent ? "bg-primary/15 text-primary" : "bg-ink/5 text-muted"
+          }`}
+        >
+          <Icon name={STAT_ICONS[label] ?? "chart"} className="h-4 w-4" />
+        </span>
+      </div>
       <p
-        className={`mt-1 text-2xl font-extrabold ${accent ? "text-primary" : "text-ink"}`}
+        className={`mt-3 text-3xl font-extrabold tracking-tight tabular-nums ${accent ? "text-gradient" : "text-ink"}`}
       >
         {formatNumber(value)}
       </p>
@@ -382,7 +412,7 @@ function ConfessionRows({
   return (
     <section className="space-y-4">
       <div className="flex items-center gap-2">
-        <h2 className="text-base font-bold text-ink">{title}</h2>
+        <h2 className="section-title">{title}</h2>
         <div className="ml-auto flex gap-1.5 overflow-x-auto">
           {statuses.map((s) => (
             <button
@@ -390,11 +420,7 @@ function ConfessionRows({
               type="button"
               aria-pressed={status === s}
               onClick={() => setStatus(s)}
-              className={`focus-ring rounded-full border px-3 py-1 text-[11px] font-semibold ${
-                status === s
-                  ? "border-primary bg-primary/15 text-primary"
-                  : "border-hairline bg-surface text-muted"
-              }`}
+              className="chip px-3 py-1 text-[11px] font-semibold"
             >
               {s}
             </button>
@@ -439,7 +465,26 @@ function ConfessionRows({
                   <Icon name="message" className="inline h-3 w-3 align-[-1px]" /> {r.commentsCount}
                 </span>
               </div>
-              <p className="mt-3 whitespace-pre-line text-sm text-ink/90">{r.message}</p>
+              <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-hairline bg-surface/70 px-2.5 py-1">
+                  <span className="text-muted">Dari</span>
+                  <strong className="font-semibold text-ink">{r.fromName?.trim() || "Anonim"}</strong>
+                </span>
+                <span aria-hidden className="text-muted">→</span>
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-hairline bg-surface/70 px-2.5 py-1">
+                  <span className="text-muted">Untuk</span>
+                  <strong className="font-semibold text-ink">{r.toName?.trim() || "—"}</strong>
+                </span>
+              </div>
+              <p className="mt-3 whitespace-pre-line text-sm leading-relaxed text-ink/90">{r.message}</p>
+              {r.song && (
+                <div className="mt-3 space-y-2">
+                  <SongCard song={r.song} lyric={r.songLyric || undefined} />
+                  {r.songLyric && (
+                    <p className="rounded-xl bg-ink/5 px-3 py-2 text-xs italic text-muted">“{r.songLyric}”</p>
+                  )}
+                </div>
+              )}
               <div className="mt-4 flex flex-wrap gap-2">
                 {r.status !== "PUBLISHED" && (
                   <button
@@ -513,7 +558,7 @@ function CommentRows({
   return (
     <section className="space-y-4">
       <div className="flex items-center gap-2">
-        <h2 className="text-base font-bold text-ink">Komentar</h2>
+        <h2 className="section-title">Komentar</h2>
         <div className="ml-auto flex gap-1.5">
           {["ALL", "VISIBLE", "HIDDEN"].map((s) => (
             <button
@@ -521,11 +566,7 @@ function CommentRows({
               type="button"
               aria-pressed={status === s}
               onClick={() => setStatus(s)}
-              className={`focus-ring rounded-full border px-3 py-1 text-[11px] font-semibold ${
-                status === s
-                  ? "border-primary bg-primary/15 text-primary"
-                  : "border-hairline bg-surface text-muted"
-              }`}
+              className="chip px-3 py-1 text-[11px] font-semibold"
             >
               {s}
             </button>
@@ -625,7 +666,7 @@ function ReportRows({
   return (
     <section className="space-y-4">
       <div className="flex items-center gap-2">
-        <h2 className="text-base font-bold text-ink">Laporan</h2>
+        <h2 className="section-title">Laporan</h2>
         <div className="ml-auto flex gap-1.5">
           {["OPEN", "RESOLVED", "DISMISSED", "ALL"].map((s) => (
             <button
@@ -633,11 +674,7 @@ function ReportRows({
               type="button"
               aria-pressed={status === s}
               onClick={() => setStatus(s)}
-              className={`focus-ring rounded-full border px-3 py-1 text-[11px] font-semibold ${
-                status === s
-                  ? "border-primary bg-primary/15 text-primary"
-                  : "border-hairline bg-surface text-muted"
-              }`}
+              className="chip px-3 py-1 text-[11px] font-semibold"
             >
               {s}
             </button>
@@ -793,7 +830,7 @@ function UserRows({
   return (
     <section className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
-        <h2 className="text-base font-bold text-ink">Pengguna</h2>
+        <h2 className="section-title">Pengguna</h2>
         <span className="badge">role diubah owner lewat server</span>
         <label className="ml-auto flex items-center gap-2 text-xs text-muted">
           <input
@@ -883,7 +920,7 @@ function UserRows({
 function CategoriesView() {
   return (
     <section className="space-y-4">
-      <h2 className="text-base font-bold text-ink">Kategori (konfigurasi tetap)</h2>
+      <h2 className="section-title">Kategori (konfigurasi tetap)</h2>
       <div className="grid gap-3 sm:grid-cols-2">
         {CATEGORIES.map((c) => (
           <div key={c.id} className="card p-4">
@@ -1187,7 +1224,7 @@ function ToggleSwitch({
       aria-label={label}
       onClick={() => onChange(!checked)}
       className={`focus-ring relative h-6 w-11 shrink-0 rounded-full transition-colors ${
-        checked ? "bg-primary" : "bg-muted/40"
+        checked ? "bg-gradient-to-r from-primary to-secondary" : "bg-muted/40"
       }`}
     >
       <span
@@ -1234,7 +1271,7 @@ function AuditRows() {
   return (
     <section className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
-        <h2 className="mr-auto text-base font-bold text-ink">Log</h2>
+        <h2 className="section-title mr-auto">Log</h2>
         {(
           [
             ["audit", "file", "Tindakan staff"],
@@ -1246,11 +1283,7 @@ function AuditRows() {
             type="button"
             aria-pressed={source === id}
             onClick={() => setSource(id)}
-            className={`focus-ring rounded-full border px-3 py-1 text-xs font-semibold ${
-              source === id
-                ? "border-primary bg-primary/15 text-primary"
-                : "border-hairline bg-surface text-muted"
-            }`}
+            className="chip px-3 py-1 text-xs font-semibold"
           >
             <Icon name={icon} className="mr-1 inline h-3.5 w-3.5 align-[-2px]" />
             {label}

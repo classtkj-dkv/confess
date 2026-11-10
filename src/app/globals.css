@@ -209,3 +209,76 @@ main > * {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ---------- Pemutar lagu ---------- */
+@keyframes vinyl-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes eq-bounce {
+  0%,
+  100% {
+    transform: scaleY(0.2);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}
+
+@keyframes sheet-up {
+  from {
+    opacity: 0;
+    transform: translateY(24px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.vinyl-disc {
+  animation: vinyl-spin 6s linear infinite;
+}
+
+.eq-bar {
+  transform-origin: bottom;
+  animation: eq-bounce 800ms ease-in-out infinite;
+}
+
+.song-sheet {
+  animation: sheet-up 0.35s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+
+.song-range {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 6px;
+  border-radius: 999px;
+  outline: none;
+  cursor: pointer;
+  background: linear-gradient(
+    90deg,
+    #4f6bff 0%,
+    #7c5cff var(--pct, 0%),
+    rgba(255, 255, 255, 0.15) var(--pct, 0%)
+  );
+}
+
+.song-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  height: 14px;
+  width: 14px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+}
+
+.song-range::-moz-range-thumb {
+  height: 14px;
+  width: 14px;
+  border: 0;
+  border-radius: 50%;
+  background: #fff;
+}
