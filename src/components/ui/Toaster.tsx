@@ -25,7 +25,7 @@ export function Toaster() {
         <button
           key={t.id}
           onClick={() => dismiss(t.id)}
-          className={`pointer-events-auto flex w-full max-w-sm items-start gap-3 rounded-xl border px-4 py-3 text-left text-sm shadow-lift glass-panel ${STYLES[t.kind].bg}`}
+          className={`pointer-events-auto flex w-full max-w-sm items-start gap-3 rounded-2xl border px-4 py-3 text-left text-sm shadow-lift glass-panel transition-transform hover:-translate-y-0.5 ${STYLES[t.kind].bg}`}
         >
           <span aria-hidden className={`mt-0.5 ${STYLES[t.kind].color}`}>
             <Icon name={STYLES[t.kind].icon} className="h-4 w-4" />

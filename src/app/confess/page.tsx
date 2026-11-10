@@ -15,10 +15,10 @@ export default async function ConfessPage({
   const category = typeof sp?.category === "string" ? sp.category : undefined;
 
   return (
-    <div className="space-y-5">
+    <div className="mx-auto max-w-2xl space-y-6">
       <header className="space-y-2">
-        <h1 className="text-xl font-bold text-ink">Tulis Confess</h1>
-        <p className="text-sm text-muted">Anonim, tanpa nama.</p>
+        <h1 className="page-title">Tulis Confess</h1>
+        <p className="page-lead">Anonim, tanpa nama.</p>
       </header>
       <ConfessionForm defaultCategory={category} />
     </div>

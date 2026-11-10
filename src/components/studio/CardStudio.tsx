@@ -1707,7 +1707,7 @@ function IconBtn({
       title={label}
       aria-pressed={active}
       className={`focus-ring grid h-9 w-9 shrink-0 place-items-center rounded-lg transition-colors disabled:opacity-35 ${
-        active ? "bg-primary/15 text-primary" : "text-muted hover:bg-white/5 hover:text-ink"
+        active ? "bg-primary/15 text-primary" : "text-muted hover:bg-ink/5 hover:text-ink"
       }`}
     >
       {children}

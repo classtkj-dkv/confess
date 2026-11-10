@@ -121,7 +121,7 @@ export function SongPicker({
                   setQ("");
                   setResults([]);
                 }}
-                className="focus-ring flex w-full items-center gap-3 p-2.5 text-left hover:bg-white/5"
+                className="focus-ring flex w-full items-center gap-3 p-2.5 text-left hover:bg-ink/5"
               >
                 <SongCover song={t} size={40} />
                 <span className="min-w-0 flex-1">

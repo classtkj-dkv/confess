@@ -42,7 +42,7 @@ export function SongCard({ song, lyric }: { song: Song; lyric?: string }) {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="focus-ring flex w-full items-center gap-3 rounded-xl border border-hairline bg-surface p-2.5 text-left transition-colors hover:bg-white/5"
+        className="focus-ring flex w-full items-center gap-3 rounded-xl border border-hairline bg-surface p-2.5 text-left transition-colors hover:bg-ink/5"
         aria-label={`Putar preview ${song.title}`}
       >
         <SongCover song={song} />

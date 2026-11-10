@@ -1,34 +1,40 @@
 import type { Config } from "tailwindcss";
 
+// Token warna memakai channel RGB agar modifier opacity (mis. bg-ink/5,
+// text-ink/90, bg-surface/60) berfungsi di dark maupun light mode.
+const token = (name: string) => `rgb(var(${name}) / <alpha-value>)`;
+
 const config: Config = {
   content: ["./src/**/*.{ts,tsx}"],
   darkMode: ["class", '[data-theme="dark"]'],
   theme: {
     extend: {
       colors: {
-        primary: "#2563EB",
-        secondary: "#4F46E5",
-        background: "var(--c-bg)",
-        surface: "var(--c-surface)",
-        card: "var(--c-card)",
-        ink: "var(--c-text)",
-        muted: "var(--c-muted)",
+        primary: "#4F6BFF",
+        secondary: "#7C5CFF",
+        background: token("--c-bg"),
+        surface: token("--c-surface"),
+        card: token("--c-card"),
+        ink: token("--c-text"),
+        muted: token("--c-muted"),
         hairline: "var(--c-border)",
-        danger: "#EF4444",
-        success: "#22C55E",
-        warning: "#F59E0B",
+        danger: "#F0506E",
+        success: "#2FBF8F",
+        warning: "#F5A524",
       },
       spacing: {
         "18": "4.5rem",
         "88": "22rem",
       },
       boxShadow: {
-        soft: "0 8px 24px rgba(2,6,23,0.35)",
-        lift: "0 12px 32px rgba(2,6,23,0.45)",
+        soft: "var(--shadow-soft)",
+        lift: "var(--shadow-lift)",
+        glow: "0 8px 28px -6px rgba(79,107,255,0.55)",
       },
       borderRadius: {
         xl: "1rem",
         "2xl": "1.25rem",
+        "3xl": "1.75rem",
       },
       fontFamily: {
         sans: [

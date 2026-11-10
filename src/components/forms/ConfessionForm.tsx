@@ -205,7 +205,7 @@ export function ConfessionForm({ defaultCategory }: { defaultCategory?: string }
 
   return (
     <form
-      className="card space-y-5 p-5"
+      className="card space-y-6 p-5 sm:p-7"
       onSubmit={(e) => {
         e.preventDefault();
         if (!invalid) setStep("preview");
@@ -281,11 +281,7 @@ export function ConfessionForm({ defaultCategory }: { defaultCategory?: string }
               role="radio"
               aria-checked={category === c.id}
               onClick={() => setCategory(c.id)}
-              className={`focus-ring inline-flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-xs font-semibold transition-colors ${
-                category === c.id
-                  ? "border-primary bg-primary/15 text-primary"
-                  : "border-hairline bg-surface text-muted hover:text-ink"
-              }`}
+              className={`chip inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold`}
             >
               <Icon name={c.icon} className="inline h-3.5 w-3.5 align-[-2px]" />
               {c.label}
@@ -297,7 +293,7 @@ export function ConfessionForm({ defaultCategory }: { defaultCategory?: string }
         )}
       </div>
 
-      <label className="flex items-start gap-3 rounded-xl bg-surface p-3 text-xs text-muted">
+      <label className="flex items-start gap-3 rounded-xl border border-hairline bg-surface/60 p-3.5 text-xs leading-relaxed text-muted">
         <input
           type="checkbox"
           checked={agree}
