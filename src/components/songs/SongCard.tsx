@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
+import { Icon } from "@/components/ui/Icon";
 import { api } from "@/lib/api";
 import type { Song } from "@/types";
 
@@ -14,7 +15,7 @@ export function SongCover({ song, size = 48 }: { song: Song; size?: number }) {
         style={style}
         className="grid shrink-0 place-items-center rounded-lg bg-primary/15 text-primary"
       >
-        ♪
+        <Icon name="music" className="h-1/2 w-1/2" />
       </span>
     );
   }
@@ -53,7 +54,7 @@ export function SongCard({ song, lyric }: { song: Song; lyric?: string }) {
           aria-hidden
           className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-primary text-xs text-white"
         >
-          ▶
+          <Icon name="play" className="h-3.5 w-3.5" />
         </span>
       </button>
       {open && <SongModal song={song} lyric={lyric} onClose={() => setOpen(false)} />}

@@ -178,6 +178,7 @@ export function ConfessionForm({ defaultCategory }: { defaultCategory?: string }
             songLyric: song ? lyric : "",
           }}
         >
+          <Icon name="image" className="h-4 w-4" />
           Atur kartu & unduh
         </CardStudioButton>
         <div className="flex gap-2">

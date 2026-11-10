@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { Icon, type IconName } from "@/components/ui/Icon";
 import type { Song } from "@/types";
 
 export interface StudioData {
@@ -18,6 +19,17 @@ type Ratio = PresetRatio | "photo";
 type ElId = "title" | "to" | "from" | "message" | "song" | "lyric";
 type SongStyle = "vinyl" | "cover" | "pill" | "card" | "cassette" | "text";
 type BgMode = "gen" | "custom" | "image";
+/** ig = animasi (piringan berputar, gelombang). wa = foto diam tanpa elemen tambahan. */
+type Mode = "ig" | "wa";
+type Tab = "elemen" | "isi" | "latar" | "gaya" | "template";
+
+const TABS: { id: Tab; label: string; icon: IconName }[] = [
+  { id: "elemen", label: "Elemen", icon: "layers" },
+  { id: "isi", label: "Isi", icon: "type" },
+  { id: "latar", label: "Latar", icon: "image" },
+  { id: "gaya", label: "Gaya", icon: "sliders" },
+  { id: "template", label: "Template", icon: "bookmark" },
+];
 
 const EL_IDS: ElId[] = ["title", "to", "from", "message", "song", "lyric"];
 const EL_NAMES: Record<ElId, string> = {
@@ -133,6 +145,7 @@ interface El {
 
 /** Semua pengaturan tampilan = isi template (tanpa isi pesan). */
 interface Design {
+  mode: Mode;
   ratio: Ratio;
   bgMode: BgMode;
   palette: number;
@@ -605,7 +618,8 @@ function paint(
     if (!song) return null;
     label();
     y += 10 * sz;
-    const style = el.songStyle;
+    // Mode WA: tanpa piringan, tanpa gelombang, tanpa gerak.
+    const style: SongStyle = d.mode === "wa" && el.songStyle === "vinyl" ? "card" : el.songStyle;
     const tp = 54 * sz * el.songText;
     const ap = 42 * sz * el.songText;
     const sc = sz * el.songCover;
@@ -631,7 +645,7 @@ function paint(
     };
     /** Indikator musik ala IG: kotak abu-abu dengan batang yang naik-turun. */
     const eqAt = (ex: number, ey: number, es: number) => {
-      if (dry || !el.songEq) return;
+      if (dry || !el.songEq || d.mode !== "ig") return;
       ctx.save();
       roundRect(ctx, ex, ey, es, es, es * 0.18);
       ctx.fillStyle = "rgba(190,190,190,0.9)";
@@ -922,7 +936,7 @@ function renderCard(
   const boxes: Boxes = {};
   for (const id of d.order) {
     if (!d.els[id].visible) continue;
-    const b = drawEl(ctx, id, d, c, cover, accent, W, H, false, undefined, 1, phase);
+    const b = drawEl(ctx, id, d, c, cover, accent, W, H, false, undefined, 1, d.mode === "ig" ? phase : 0);
     if (b) boxes[id] = b;
   }
   if (guides) {
@@ -1058,6 +1072,7 @@ function baseEl(): El {
 function defaultDesign(content: Content, hasLyric: boolean): Design {
   const base = baseEl();
   const d: Design = {
+    mode: "wa",
     ratio: "story",
     bgMode: "gen",
     palette: 0,
@@ -1140,6 +1155,12 @@ function sanitizeDesign(raw: unknown, fb: Design): Design {
   const r = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
   const els = (r.els && typeof r.els === "object" ? r.els : {}) as Record<string, unknown>;
   return {
+    // template lama tanpa field mode: yang memakai piringan dianggap mode IG
+    mode: pick(
+      r.mode,
+      ["ig", "wa"] as const,
+      (els.song as Record<string, unknown> | undefined)?.songStyle === "vinyl" ? "ig" : fb.mode
+    ),
     ratio: pick(r.ratio, ["story", "post", "square", "photo"] as const, fb.ratio),
     bgMode: pick(r.bgMode, ["gen", "custom", "image"] as const, fb.bgMode),
     palette: Math.round(num(r.palette, 0, PALETTES.length - 1, fb.palette)),
@@ -1664,6 +1685,36 @@ function ColorField({
   );
 }
 
+function IconBtn({
+  label,
+  onClick,
+  disabled,
+  active,
+  children,
+}: {
+  label: string;
+  onClick: () => void;
+  disabled?: boolean;
+  active?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={label}
+      title={label}
+      aria-pressed={active}
+      className={`focus-ring grid h-9 w-9 shrink-0 place-items-center rounded-lg transition-colors disabled:opacity-35 ${
+        active ? "bg-primary/15 text-primary" : "text-muted hover:bg-white/5 hover:text-ink"
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
 function Group({ title, children, open = false }: { title: string; children: ReactNode; open?: boolean }) {
   return (
     <details open={open} className="rounded-lg border border-hairline">
@@ -1691,6 +1742,7 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
   const [zoom, setZoom] = useState(1);
   const [histTick, setHistTick] = useState(0);
   const [playing, setPlaying] = useState(true);
+  const [tab, setTab] = useState<Tab>("elemen");
   const [gifW, setGifW] = useState(720);
   const [gifMsg, setGifMsg] = useState("");
   const phaseRef = useRef(0);
@@ -1727,6 +1779,7 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
   const song = content.song;
   const songEl = design.els.song;
   const isAnimated =
+    design.mode === "ig" &&
     Boolean(song) &&
     songEl.visible &&
     (songEl.songStyle === "vinyl" ||
@@ -2338,6 +2391,26 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
       sy0: b.sy,
     };
     setSelected(id);
+    setTab("elemen");
+  }
+
+  function setMode(v: Mode) {
+    setDesign((p) => ({
+      ...p,
+      mode: v,
+      els:
+        v === "wa" && p.els.song.songStyle === "vinyl"
+          ? { ...p.els, song: { ...p.els.song, songStyle: "card" } }
+          : p.els,
+    }));
+  }
+
+  function toggleVisible(id: ElId) {
+    const next = {
+      ...design,
+      els: { ...design.els, [id]: { ...design.els[id], visible: !design.els[id].visible } },
+    };
+    setDesign(relayoutIfFresh(next));
   }
 
   function onPointerDown(e: React.PointerEvent<HTMLCanvasElement>) {
@@ -2532,61 +2605,63 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
   const sel = selected && available(selected) ? design.els[selected] : null;
   const active = templates.find((t) => t.id === activeId) ?? null;
 
+  const dm = dims(design);
+  const canUndo = hist.current.past.length > 0 || JSON.stringify(design) !== hist.current.last;
+
   return createPortal(
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 p-3" onClick={onClose}>
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 sm:p-4" onClick={onClose}>
       <div
         role="dialog"
         aria-modal="true"
         aria-label="Kartu pesan"
-        className="glass-panel mx-auto my-4 w-full max-w-5xl rounded-2xl border border-hairline p-4 shadow-lift"
+        className="mx-auto flex min-h-full w-full max-w-5xl flex-col bg-card sm:min-h-0 sm:rounded-2xl sm:border sm:border-hairline sm:shadow-lift"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-base font-semibold text-ink">Kartu pesan</h2>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Tutup"
-            className="focus-ring rounded-lg px-2 py-1 text-sm font-semibold text-muted hover:text-ink"
-          >
-            ✕
-          </button>
-        </div>
+        <header className="flex items-center gap-3 border-b border-hairline px-4 py-3">
+          <span className="grid h-8 w-8 place-items-center rounded-lg bg-primary/15 text-primary">
+            <Icon name="music" className="h-4 w-4" />
+          </span>
+          <h2 className="text-sm font-semibold text-ink sm:text-base">Kartu pesan</h2>
+          <div className="ml-auto flex items-center gap-2">
+            <div role="group" aria-label="Mode kartu" className="inline-flex rounded-xl bg-surface p-0.5 text-xs font-semibold">
+              {(["wa", "ig"] as const).map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  aria-pressed={design.mode === m}
+                  title={m === "wa" ? "Foto (WA): gambar diam tanpa gerak" : "Animasi (IG): piringan dan gelombang bergerak"}
+                  onClick={() => setMode(m)}
+                  className={`focus-ring rounded-[10px] px-3 py-1.5 transition-colors ${
+                    design.mode === m ? "bg-primary text-white shadow-sm" : "text-muted hover:text-ink"
+                  }`}
+                >
+                  {m === "wa" ? "Foto" : "Animasi"}
+                </button>
+              ))}
+            </div>
+            <IconBtn label="Tutup" onClick={onClose}>
+              <Icon name="close" className="h-5 w-5" />
+            </IconBtn>
+          </div>
+        </header>
 
-        <div className="grid gap-5 md:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
+        <div className="grid flex-1 md:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)]">
           {/* ── pratinjau ── */}
-          <div className="space-y-3 self-start md:sticky md:top-4" {...dropHandlers}>
-            <div className="flex items-center gap-1.5">
-              <button
-                type="button"
-                onClick={undo}
-                disabled={!(hist.current.past.length > 0 || JSON.stringify(design) !== hist.current.last)}
-                aria-label="Urungkan"
-                title="Urungkan (Ctrl+Z)"
-                className="btn-ghost px-2.5 py-1 text-sm disabled:opacity-40"
-                data-tick={histTick}
-              >
-                ↶
-              </button>
-              <button
-                type="button"
-                onClick={redo}
-                disabled={hist.current.future.length === 0}
-                aria-label="Ulangi"
-                title="Ulangi (Ctrl+Shift+Z)"
-                className="btn-ghost px-2.5 py-1 text-sm disabled:opacity-40"
-              >
-                ↷
-              </button>
-              <span className="mx-1 h-5 w-px bg-hairline" aria-hidden />
-              <button
-                type="button"
-                onClick={() => setZoom((z) => clamp(Math.round((z - 0.25) * 4) / 4, 1, 4))}
-                aria-label="Perkecil tampilan"
-                className="btn-ghost px-2.5 py-1 text-sm"
-              >
-                −
-              </button>
+          <div
+            className="sticky top-0 z-20 border-b border-hairline bg-card [--ph:40vh] md:top-2 md:z-auto md:self-start md:border-b-0 md:[--ph:62vh]"
+            {...dropHandlers}
+          >
+            <div className="flex items-center gap-1 px-3 pt-2">
+              <IconBtn label="Urungkan (Ctrl+Z)" onClick={undo} disabled={!canUndo}>
+                <Icon name="undo" className="h-[18px] w-[18px]" />
+              </IconBtn>
+              <IconBtn label="Ulangi (Ctrl+Shift+Z)" onClick={redo} disabled={hist.current.future.length === 0}>
+                <Icon name="redo" className="h-[18px] w-[18px]" />
+              </IconBtn>
+              <span className="mx-1.5 h-5 w-px bg-hairline" aria-hidden data-tick={histTick} />
+              <IconBtn label="Perkecil tampilan" onClick={() => setZoom((z) => clamp(Math.round((z - 0.25) * 4) / 4, 1, 4))} disabled={zoom <= 1}>
+                <Icon name="minus" className="h-[18px] w-[18px]" />
+              </IconBtn>
               <input
                 type="range"
                 min={1}
@@ -2597,31 +2672,35 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
                 aria-label="Zoom tampilan"
                 className="min-w-0 flex-1"
               />
+              <IconBtn label="Perbesar tampilan" onClick={() => setZoom((z) => clamp(Math.round((z + 0.25) * 4) / 4, 1, 4))} disabled={zoom >= 4}>
+                <Icon name="plus" className="h-[18px] w-[18px]" />
+              </IconBtn>
               <button
                 type="button"
-                onClick={() => setZoom((z) => clamp(Math.round((z + 0.25) * 4) / 4, 1, 4))}
-                aria-label="Perbesar tampilan"
-                className="btn-ghost px-2.5 py-1 text-sm"
+                onClick={() => setZoom(1)}
+                aria-label="Kembali ke 100%"
+                className="focus-ring w-11 shrink-0 rounded-lg text-center text-xs font-semibold tabular-nums text-muted hover:text-ink"
               >
-                +
-              </button>
-              <button type="button" onClick={() => setZoom(1)} className="btn-ghost px-2 py-1 text-xs">
                 {Math.round(zoom * 100)}%
               </button>
-              <button
-                type="button"
-                onClick={() => setPlaying((v) => !v)}
-                aria-pressed={playing}
-                aria-label={playing ? "Jeda animasi" : "Putar animasi"}
-                title={playing ? "Jeda animasi" : "Putar animasi"}
-                className="btn-ghost px-2.5 py-1 text-sm"
-              >
-                {playing ? "⏸" : "▶"}
-              </button>
+              {design.mode === "ig" && (
+                <>
+                  <span className="mx-1.5 h-5 w-px bg-hairline" aria-hidden />
+                  <IconBtn
+                    label={playing ? "Jeda animasi" : "Putar animasi"}
+                    onClick={() => setPlaying((v) => !v)}
+                    active={playing}
+                  >
+                    <Icon name={playing ? "pause" : "play"} className="h-5 w-5" />
+                  </IconBtn>
+                </>
+              )}
             </div>
             <div
               ref={scrollRef}
-              className={`relative max-h-[64vh] overflow-auto rounded-xl p-1 ${drag ? "ring-2 ring-primary" : ""}`}
+              className={`relative mx-3 my-2 max-h-[calc(var(--ph)+0.5rem)] overflow-auto rounded-xl bg-surface/60 p-1 ${
+                drag ? "ring-2 ring-primary" : ""
+              }`}
             >
               {drag && (
                 <div className="pointer-events-none absolute inset-0 z-10 grid place-items-center rounded-xl bg-primary/20 text-sm font-semibold text-ink">
@@ -2639,7 +2718,7 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
                 onKeyDown={onKeyDown}
                 className="mx-auto block rounded-lg shadow-lift outline-none focus-visible:ring-2 focus-visible:ring-primary"
                 style={{
-                  width: `calc(min(100%, ${((62 * dims(design).w) / dims(design).h).toFixed(3)}vh) * ${zoom})`,
+                  width: `calc(min(100%, var(--ph) * ${(dm.w / dm.h).toFixed(4)}) * ${zoom})`,
                   height: "auto",
                   maxWidth: "none",
                   touchAction: "none",
@@ -2647,59 +2726,38 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
                 }}
               />
             </div>
-            <p className="text-center text-[11px] text-muted">
-              Pilih elemen, lalu tarik titik di sudut dan sisi untuk mengubah ukuran, titik atas untuk memutar. Cubit
-              dua jari untuk skala dan putar cepat. Zoom lalu geser area kosong untuk menggeser tampilan.
+            <p className="hidden px-4 pb-3 text-center text-[11px] text-muted md:block">
+              Tarik titik biru untuk mengubah ukuran, titik atas untuk memutar. Cubit dua jari untuk skala dan putar cepat.
             </p>
-            <div className="flex gap-2">
-              <button type="button" onClick={() => void download()} className="btn-primary flex-1">
-                Unduh PNG
-              </button>
-              {canShare && (
-                <button type="button" onClick={() => void shareImage()} className="btn-ghost flex-1">
-                  Bagikan
-                </button>
-              )}
-            </div>
-            <div className="flex items-center gap-2">
-              <select
-                value={gifW}
-                onChange={(e) => setGifW(Number(e.target.value))}
-                aria-label="Ukuran GIF"
-                disabled={Boolean(gifMsg)}
-                className="input w-auto py-1.5 text-xs"
-              >
-                <option value={720}>GIF HD (terbaik)</option>
-                <option value={540}>GIF sedang</option>
-                <option value={360}>GIF kecil</option>
-              </select>
-              <button
-                type="button"
-                onClick={() => void saveGif(false)}
-                disabled={Boolean(gifMsg)}
-                className="btn-ghost flex-1 disabled:opacity-60"
-              >
-                {gifMsg || "Unduh GIF"}
-              </button>
-              {canShare && (
-                <button
-                  type="button"
-                  onClick={() => void saveGif(true)}
-                  disabled={Boolean(gifMsg)}
-                  className="btn-ghost disabled:opacity-60"
-                >
-                  Bagikan
-                </button>
-              )}
-            </div>
-            {error && <p className="text-xs text-warning">{error}</p>}
-            {info && <p className="text-xs text-success">{info}</p>}
           </div>
 
           {/* ── pengaturan ── */}
-          <div className="space-y-5">
+          <div className="min-w-0 md:border-l md:border-hairline">
+            <div
+              role="tablist"
+              aria-label="Pengaturan kartu"
+              className="flex gap-1 overflow-x-auto border-b border-hairline px-3 pt-2"
+            >
+              {TABS.map((t) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={tab === t.id}
+                  onClick={() => setTab(t.id)}
+                  className={`focus-ring -mb-px flex shrink-0 items-center gap-1.5 border-b-2 px-3 py-2.5 text-xs font-semibold transition-colors ${
+                    tab === t.id ? "border-primary text-ink" : "border-transparent text-muted hover:text-ink"
+                  }`}
+                >
+                  <Icon name={t.icon} className="h-4 w-4" />
+                  {t.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="space-y-5 p-4">
+              {tab === "template" && (
             <section className="space-y-2">
-              <p className="label">Template (tersimpan di HP ini)</p>
               {templates.length > 0 && (
                 <ul className="flex gap-2 overflow-x-auto pb-1">
                   {templates.map((t) => (
@@ -2728,7 +2786,7 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
                           aria-label={`Hapus template ${t.name}`}
                           className="focus-ring rounded px-1 text-[11px] text-muted hover:text-ink"
                         >
-                          ✕
+                          <Icon name="trash" className="h-3.5 w-3.5" />
                         </button>
                       </div>
                     </li>
@@ -2792,9 +2850,9 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
                 HP lain: Bagikan template, kirim filenya, lalu Impor di sana.
               </p>
             </section>
-
+              )}
+              {tab === "latar" && (
             <section className="space-y-2">
-              <p className="label">Latar</p>
               <Seg
                 label="Jenis latar"
                 value={design.bgMode}
@@ -2938,9 +2996,9 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
                 </div>
               )}
             </section>
-
+              )}
+              {tab === "isi" && (
             <section className="space-y-2">
-              <p className="label">Isi</p>
               <input
                 value={design.title}
                 onChange={(e) => setD({ title: e.target.value })}
@@ -2987,10 +3045,11 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
                 />
               )}
             </section>
-
+              )}
+              {tab === "elemen" && (
             <section className="space-y-3">
               <div className="flex items-center justify-between">
-                <p className="label !mb-0">Elemen</p>
+                <p className="label !mb-0">Lapisan</p>
                 <button
                   type="button"
                   onClick={() => {
@@ -3013,18 +3072,15 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
                         selected === id ? "border-primary bg-primary/10" : "border-hairline"
                       }`}
                     >
-                      <input
-                        type="checkbox"
-                        checked={design.els[id].visible}
-                        aria-label={`Tampilkan ${EL_NAMES[id]}`}
-                        onChange={(e) => {
-                          const next = {
-                            ...design,
-                            els: { ...design.els, [id]: { ...design.els[id], visible: e.target.checked } },
-                          };
-                          setDesign(relayoutIfFresh(next));
-                        }}
-                      />
+                      <button
+                        type="button"
+                        aria-pressed={design.els[id].visible}
+                        aria-label={`${design.els[id].visible ? "Sembunyikan" : "Tampilkan"} ${EL_NAMES[id]}`}
+                        onClick={() => toggleVisible(id)}
+                        className="focus-ring grid h-7 w-7 place-items-center rounded-md text-muted hover:text-ink"
+                      >
+                        <Icon name={design.els[id].visible ? "eye" : "eyeoff"} className="h-4 w-4" />
+                      </button>
                       <button
                         type="button"
                         onClick={() => setSelected(id)}
@@ -3038,7 +3094,7 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
                         aria-label={`Naikkan lapisan ${EL_NAMES[id]}`}
                         className="focus-ring rounded px-1.5 text-xs text-muted hover:text-ink"
                       >
-                        ▲
+                        <Icon name="chevronUp" className="h-4 w-4" />
                       </button>
                       <button
                         type="button"
@@ -3046,7 +3102,7 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
                         aria-label={`Turunkan lapisan ${EL_NAMES[id]}`}
                         className="focus-ring rounded px-1.5 text-xs text-muted hover:text-ink"
                       >
-                        ▼
+                        <Icon name="chevronDown" className="h-4 w-4" />
                       </button>
                     </li>
                   ))}
@@ -3063,11 +3119,11 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
                         label="Gaya preview lagu"
                         value={sel.songStyle}
                         onChange={(v) => setEl(selected, { songStyle: v })}
-                        options={SONG_STYLES}
+                        options={design.mode === "ig" ? SONG_STYLES : SONG_STYLES.filter((x) => x.id !== "vinyl")}
                       />
                       <Range label="Ukuran teks lagu" value={sel.songText} min={0.2} max={2} step={0.05} onChange={(v) => setEl(selected, { songText: v })} />
                       <Range label="Ukuran cover / kaset" value={sel.songCover} min={0.2} max={2} step={0.05} onChange={(v) => setEl(selected, { songCover: v })} />
-                      {(sel.songStyle === "cover" || sel.songStyle === "pill" || sel.songStyle === "card") && (
+                      {design.mode === "ig" && (sel.songStyle === "cover" || sel.songStyle === "pill" || sel.songStyle === "card") && (
                         <Toggle label="Indikator musik (equalizer)" checked={sel.songEq} onChange={(v) => setEl(selected, { songEq: v })} />
                       )}
                     </div>
@@ -3173,9 +3229,9 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
                 </div>
               )}
             </section>
-
+              )}
+              {tab === "gaya" && (
             <section className="space-y-3">
-              <p className="label">Tampilan umum</p>
               <Seg
                 label="Ukuran kartu"
                 value={design.ratio}
@@ -3210,8 +3266,63 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
               </label>
               <ColorField label="Warna utama teks" value={design.color} fallback="#0b3d91" onChange={(v) => setD({ color: v })} />
             </section>
+              )}
+            </div>
           </div>
         </div>
+
+        <footer className="sticky bottom-0 z-30 space-y-2 border-t border-hairline bg-card px-4 py-3">
+          {error && <p className="text-xs text-warning">{error}</p>}
+          {info && <p className="text-xs text-success">{info}</p>}
+          <div className="flex flex-wrap items-center gap-2">
+            <button type="button" onClick={() => void download()} className="btn-primary flex-1 sm:flex-none">
+              <Icon name="download" className="h-4 w-4" />
+              {design.mode === "wa" ? "Unduh foto" : "Unduh PNG"}
+            </button>
+            {canShare && (
+              <button type="button" onClick={() => void shareImage()} className="btn-ghost">
+                <Icon name="share" className="h-4 w-4" />
+                <span className="hidden sm:inline">Bagikan</span>
+              </button>
+            )}
+            {design.mode === "ig" && (
+              <>
+                <span className="mx-1 hidden h-6 w-px bg-hairline sm:block" aria-hidden />
+                <select
+                  value={gifW}
+                  onChange={(e) => setGifW(Number(e.target.value))}
+                  aria-label="Ukuran GIF"
+                  disabled={Boolean(gifMsg)}
+                  className="input w-auto py-2 text-xs"
+                >
+                  <option value={720}>HD</option>
+                  <option value={540}>Sedang</option>
+                  <option value={360}>Kecil</option>
+                </select>
+                <button
+                  type="button"
+                  onClick={() => void saveGif(false)}
+                  disabled={Boolean(gifMsg)}
+                  className="btn-ghost flex-1 sm:flex-none"
+                >
+                  <Icon name="film" className="h-4 w-4" />
+                  {gifMsg || "Unduh GIF"}
+                </button>
+                {canShare && (
+                  <button
+                    type="button"
+                    onClick={() => void saveGif(true)}
+                    disabled={Boolean(gifMsg)}
+                    aria-label="Bagikan GIF"
+                    className="btn-ghost"
+                  >
+                    <Icon name="share" className="h-4 w-4" />
+                  </button>
+                )}
+              </>
+            )}
+          </div>
+        </footer>
       </div>
     </div>,
     document.body
@@ -3236,10 +3347,15 @@ export function CardStudioButton({
         onClick={() => setOpen(true)}
         className={
           className ??
-          "focus-ring rounded-lg px-2.5 py-1.5 text-xs font-semibold text-muted transition-colors hover:text-ink"
+          "focus-ring inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-muted transition-colors hover:text-ink"
         }
       >
-        {children ?? "Kartu"}
+        {children ?? (
+          <>
+            <Icon name="image" className="h-4 w-4" />
+            Kartu
+          </>
+        )}
       </button>
       {open && <CardStudio data={data} onClose={() => setOpen(false)} />}
     </>

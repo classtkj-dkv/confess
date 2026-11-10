@@ -31,7 +31,15 @@ const config: Config = {
         "2xl": "1.25rem",
       },
       fontFamily: {
-        sans: ["var(--font-sans)", "system-ui", "sans-serif"],
+        sans: [
+          "var(--font-inter, system-ui)",
+          "ui-sans-serif",
+          "system-ui",
+          "-apple-system",
+          "Segoe UI",
+          "Roboto",
+          "sans-serif",
+        ],
       },
       transitionDuration: {
         DEFAULT: "200ms",
