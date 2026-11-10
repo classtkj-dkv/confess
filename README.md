@@ -168,9 +168,21 @@ npm run typecheck  # tsc --noEmit
 npm run lint       # next lint
 ```
 
-## Moderasi AI (OpenRouter)
+## AI terpisah dua tugas: moderasi & musik
 
-Isi `OPENROUTER_API_KEY` di Vercel untuk mengaktifkan. Alurnya:
+Dua tugas AI berjalan terpisah, masing-masing dengan **key, model, dan kuota sendiri** supaya
+limit/kredit yang satu tidak mengganggu tugas lain:
+
+| Tugas | Prefiks env | Kerjaannya |
+| --- | --- | --- |
+| **AI moderasi (acc)** | `OPENROUTER_*` | Menilai setiap confession: approve / revise / manual |
+| **AI musik (lirik)** | `MUSIC_AI_*` | Merapikan & menyusun lirik + menaksir titik mulai preview 30 detik |
+
+## Moderasi AI (acc)
+
+Isi API key (prefiks `OPENROUTER_`) di Vercel untuk mengaktifkan. Rotasi key didukung: `OPENROUTER_API_KEYS="sk-or-1,sk-or-2,sk-or-3"`
+atau `OPENROUTER_API_KEY_1..3` (gaya `OPENROUTER_API_KEY` tunggal tetap jalan). Key yang limit/kreditnya habis
+otomatis digantikan key berikutnya. Alurnya:
 
 1. Confession dinilai AI (paham bahasa gaul Indonesia). Hasilnya: **approve** (sopan & aman → langsung tayang),
    **revise** (pengirim diminta merevisi, isi tidak hilang), atau **manual** (sensitif/ragu → moderator).
@@ -181,11 +193,24 @@ Isi `OPENROUTER_API_KEY` di Vercel untuk mengaktifkan. Alurnya:
 4. AI gagal / timeout / tidak ada key → otomatis moderasi manual (tidak pernah memblokir pengirim).
 5. Admin bisa mematikan lewat toggle **Moderasi AI** di panel pengaturan.
 
+### AI musik pasang lirik saat pilih lagu (form)
+Tugas AI ini pakai **key sendiri** (prefiks `MUSIC_AI_`)/bukan key moderasi:
+- Saat lagu dipilih di form confession, lirik dari LRCLIB dirapikan & disusun oleh AI dulu
+  (typo dibenahi, baris terpotong digabung, label seperti `[Verse]` dibuang, bagian instrumental ditandai
+  `music: true`) sebelum form dilanjutkan.
+- AI musik juga menaksir **titik mulai preview** potongan Deezer 30 detik supaya lirik tidak muncul mendahului
+  musik ("terlalu cepet"). Tombol **Tes putar** di pemilih lagu membuka pemutar beserta lirik hasil AI:
+  cek sinkronnya di situ; penyesuaian offset manual per perangkat tetap diingat seperti sebelumnya.
+- Hasilnya di-cache per lagu (6 jam) dan dibatasi 30 kali per pengguna / 10 menit (`songLyricAi` di `rateLimit.ts`).
+- Bila `MUSIC_AI_*` tidak diisi, sungguhan tidak ada pemakaian kuota AI moderasi — pemutar memakai versi dasar
+  (LRCLIB + taksiran kasar). Bawaan model musik: `openai/gpt-4.1-mini` (murah, cukup untuk menyusun lirik).
+
 Keputusan AI tersimpan di data privat (`confessions/{id}/moderation`). Komentar belum dimoderasi AI.
 
 ### Memastikan AI benar-benar bekerja
 - Panel admin → Pengaturan → **Tes koneksi AI**: mengirim dua contoh pesan (satu sopan, satu menghina + data pribadi) dan
   menampilkan keputusan AI, waktu respons, serta alasan jelas bila gagal (key salah, kredit habis, model tidak ada, dll).
+- Hasil tes juga menampilkan status **AI musik** dan jumlah key aktif masing-masing tugas (dua-duanya terpisah).
 - Setiap kegagalan AI juga dicatat di log server (cari `[ai-moderation]` di Vercel Logs).
 - Di daftar confession admin, kiriman yang diputuskan AI diberi lencana "AI: menyetujui" atau "AI: serahkan ke moderator".
 - Pengirim diberi tahu bila pesannya dicek moderator karena kuota AI jam itu penuh.

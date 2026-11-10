@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 import { errorResponse, requireAdmin } from "@/lib/security/apiHelpers";
 import { aiStatus, moderateDetailed } from "@/lib/ai/moderate";
+import { roleStatus } from "@/lib/ai/openrouter";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -25,7 +26,7 @@ export async function POST(req: NextRequest): Promise<Response> {
     await requireAdmin(req);
     const status = aiStatus();
     if (!status.configured) {
-      return Response.json({ ...status, checks: [] });
+      return Response.json({ ...status, checks: [], music: roleStatus("music") });
     }
     const checks = await Promise.all(
       SAMPLES.map(async (s) => {
@@ -47,7 +48,7 @@ export async function POST(req: NextRequest): Promise<Response> {
         };
       })
     );
-    return Response.json({ ...status, checks });
+    return Response.json({ ...status, checks, music: roleStatus("music") });
   } catch (err) {
     return errorResponse(err);
   }

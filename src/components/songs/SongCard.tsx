@@ -82,7 +82,9 @@ export function SongCard({ song, lyric }: { song: Song; lyric?: string }) {
           <Icon name="play" className="h-3.5 w-3.5" />
         </span>
       </button>
-      {open && <SongModal song={song} lyric={lyric} ctx={ctx} onClose={closePlayer} />}
+      {open && (
+        <SongModal song={song} lyric={lyric} ctx={ctx} onClose={closePlayer} />
+      )}
     </>
   );
 }
@@ -187,16 +189,22 @@ function MusicNote({ active }: { active: boolean }) {
 
 const offsetKey = (id: string) => `confess:lyric-offset:${id}`;
 
-function SongModal({
+export function SongModal({
   song,
   lyric,
   ctx,
   onClose,
+  aiOffset,
+  aiSynced,
 }: {
   song: Song;
   lyric?: string;
   ctx: AudioContext | null;
   onClose: () => void;
+  /** Estimasi titik mulai preview dari AI; dipakai bila perangkat ini belum pernah dikalibrasi. */
+  aiOffset?: number | null;
+  /** Lirik yang sudah dirapikan AI (pengganti hasil LRCLIB mentah). */
+  aiSynced?: SyncedLine[];
 }) {
   const [failed, setFailed] = useState(false);
   const [ready, setReady] = useState(false);
@@ -222,20 +230,27 @@ function SongModal({
   // Lirik ber-timestamp + offset tersimpan (kalau pernah disesuaikan di perangkat ini).
   useEffect(() => {
     let cancelled = false;
+    const apply = (lines: SyncedLine[]) => {
+      setSynced(lines);
+      let saved: number | null = null;
+      try {
+        const raw = localStorage.getItem(offsetKey(song.id));
+        if (raw !== null && Number.isFinite(Number(raw))) saved = Number(raw);
+      } catch {
+        /* abaikan */
+      }
+      setCalibrated(saved !== null);
+      setOffset(saved ?? (aiOffset ?? guessOffset(lines, lyric)));
+    };
+    if (aiSynced && aiSynced.length >= 2) {
+      // Lirik versi AI sudah disiapkan di form — tidak perlu fetch lagi.
+      apply(aiSynced);
+      return;
+    }
     api(`/api/songs/lyrics?id=${encodeURIComponent(song.id)}`, { method: "GET", auth: false })
       .then((d) => {
         if (cancelled) return;
-        const lines = readSynced(d.synced);
-        setSynced(lines);
-        let saved: number | null = null;
-        try {
-          const raw = localStorage.getItem(offsetKey(song.id));
-          if (raw !== null && Number.isFinite(Number(raw))) saved = Number(raw);
-        } catch {
-          /* abaikan */
-        }
-        setCalibrated(saved !== null);
-        setOffset(saved ?? guessOffset(lines, lyric));
+        apply(readSynced(d.synced));
       })
       .catch(() => {});
     return () => {
@@ -433,7 +448,7 @@ function SongModal({
       /* abaikan */
     }
     setCalibrated(false);
-    setOffset(guessOffset(synced, lyric));
+    setOffset(aiOffset ?? guessOffset(synced, lyric));
   }
 
   const pct = duration > 0 ? Math.min(100, (time / duration) * 100) : 0;

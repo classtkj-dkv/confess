@@ -14,6 +14,8 @@ export interface SongInfo {
 export interface SongPreview extends SongInfo {
   preview: string;
   link: string;
+  /** Lama lagu penuh dalam detik (untuk penempatan lirik pada preview 30 dtk). */
+  duration: number;
 }
 
 const API = "https://api.deezer.com";
@@ -47,6 +49,7 @@ function mapTrack(t: Record<string, unknown> | null | undefined): SongPreview | 
     cover: safeUrl(album.cover_medium || album.cover_big || album.cover),
     preview: safeUrl(t.preview),
     link: `https://www.deezer.com/track/${id}`,
+    duration: Math.max(0, Math.round(Number(t.duration) || 0)),
   };
 }
 

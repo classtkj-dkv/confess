@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useParams } from "next/navigation";
 import { ConfessionCard } from "@/components/feed/ConfessionCard";
 import { Icon } from "@/components/ui/Icon";
@@ -222,9 +223,9 @@ export function ConfessionDetailClient() {
         {isAdmin && (
           <p className="mt-4 rounded-xl bg-warning/10 p-3 text-xs text-ink">
             Kamu login sebagai admin — komentar termoderasi bisa diatur dari{" "}
-            <a href="/admin/comments" className="font-semibold underline">
+            <Link href="/admin/comments" className="font-semibold underline">
               dashboard admin
-            </a>
+            </Link>
             .
           </p>
         )}

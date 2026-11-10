@@ -1013,7 +1013,9 @@ function AnnouncementBase({
     try {
       const d = (await api("/api/admin/ai-test", { body: {} })) as {
         configured: boolean;
+        keys?: number;
         model: string;
+        music?: { configured: boolean; keys: number; model: string; envPrefix: string };
         checks: {
           label: string;
           expected: string;
@@ -1023,19 +1025,35 @@ function AnnouncementBase({
           error: string;
         }[];
       };
+      const lines: { ok: boolean; text: string }[] = [];
       if (!d.configured) {
-        setAiTest([{ ok: false, text: "OPENROUTER_API_KEY belum diisi di environment Vercel." }]);
+        lines.push({
+          ok: false,
+          text: "API key AI moderasi belum terisi. Isi OPENROUTER_API_KEYS (atau OPENROUTER_API_KEY_1 s.d. _3) di environment Vercel.",
+        });
       } else {
-        setAiTest([
-          { ok: true, text: `Model: ${d.model}` },
+        lines.push({ ok: true, text: `AI moderasi — model ${d.model}, key aktif: ${d.keys ?? 1}` });
+        lines.push(
           ...d.checks.map((c) => ({
             ok: c.ok,
             text: c.error
               ? `${c.label}: GAGAL. ${c.error}`
               : `${c.label}: AI menjawab "${c.verdict}" (${(c.ms / 1000).toFixed(1)} dtk)${c.ok ? "" : `, diharapkan "${c.expected}"`}`,
-          })),
-        ]);
+          }))
+        );
       }
+      const m = d.music;
+      if (m) {
+        lines.push(
+          m.configured
+            ? { ok: true, text: `AI musik (lirik) terpisah — model ${m.model}, key aktif: ${m.keys}` }
+            : {
+                ok: false,
+                text: `AI musik (lirik & sinkron) belum punya key sendiri — isi ${m.envPrefix}_API_KEYS atau ${m.envPrefix}_API_KEY_1 di environment.`,
+              }
+        );
+      }
+      setAiTest(lines);
     } catch (err) {
       setAiTest([{ ok: false, text: err instanceof ApiClientError ? err.message : "Tes AI gagal." }]);
     } finally {

@@ -1,12 +1,19 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { Icon } from "@/components/ui/Icon";
 import { api, ApiClientError } from "@/lib/api";
 import { useSettings } from "@/lib/firebase/useSettings";
 import type { Song } from "@/types";
-import { SongCover } from "./SongCard";
+import { SongCover, SongModal } from "./SongCard";
 
 const LYRIC_MAX = 200;
+
+interface AiRow {
+  t: number;
+  text: string;
+  music?: boolean;
+}
 
 export function SongPicker({
   song,
@@ -26,6 +33,12 @@ export function SongPicker({
   const [error, setError] = useState("");
   const [lines, setLines] = useState<string[]>([]);
   const [lyricState, setLyricState] = useState<"idle" | "loading" | "ready" | "none">("idle");
+  // Tahap AI: merapikan lirik + menatap posisi musik/lirik sebelum dilanjutkan.
+  const [aiState, setAiState] = useState<"idle" | "loading" | "ready" | "skip">("idle");
+  const [aiOffset, setAiOffset] = useState<number | null>(null);
+  const [aiSynced, setAiSynced] = useState<AiRow[]>([]);
+  const [testing, setTesting] = useState(false);
+  const [ctx, setCtx] = useState<AudioContext | null>(null);
   const autoFilled = useRef<string | null>(null);
 
   useEffect(() => {
@@ -59,11 +72,13 @@ export function SongPicker({
     };
   }, [q]);
 
-  // Lirik otomatis: cari baris lirik lagu yang dipilih, lalu isi saran kutipan.
   useEffect(() => {
     if (!song) {
       setLines([]);
       setLyricState("idle");
+      setAiState("idle");
+      setAiOffset(null);
+      setAiSynced([]);
       return;
     }
     let cancelled = false;
@@ -89,10 +104,63 @@ export function SongPicker({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [song?.id]);
 
+  // Panggilan kedua: AI (OpenRouter, key 2–3 berotasi) merapikan & menyusun lirik
+  // serta menatap di detik berapa preview musik mulai — lihat "Tes putar".
+  useEffect(() => {
+    if (!song) return;
+    let cancelled = false;
+    setAiState("loading");
+    api("/api/songs/lyrics-ai", {
+      method: "POST",
+      body: { id: song.id },
+    })
+      .then((d) => {
+        if (cancelled) return;
+        if (d.skipped || typeof d.offset !== "number") {
+          setAiState("skip");
+          return;
+        }
+        const rows = Array.isArray(d.synced) ? (d.synced as AiRow[]) : [];
+        setAiOffset(d.offset);
+        setAiSynced(rows);
+        setAiState(rows.length >= 2 ? "ready" : "skip");
+        const quoted = rows.filter((r) => !r.music && r.text).map((r) => r.text);
+        if (quoted.length >= 2) setLines(quoted.slice(0, 60));
+      })
+      .catch(() => {
+        if (!cancelled) setAiState("skip");
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [song?.id]);
+
   function toggleLine(line: string) {
     const cur = lyric.split("\n").map((l) => l.trim()).filter(Boolean);
     const next = cur.includes(line) ? cur.filter((l) => l !== line) : [...cur, line];
     onLyric(next.join("\n").slice(0, LYRIC_MAX));
+  }
+
+  // "Tes putar": buka pemutar dengan lirik & posisi hasil AI langsung dari form.
+  function openTestPlayer() {
+    try {
+      const AC =
+        window.AudioContext ||
+        (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      setCtx(AC ? new AC() : null);
+    } catch {
+      setCtx(null);
+    }
+    setTesting(true);
+  }
+
+  function closeTestPlayer() {
+    setTesting(false);
+    setCtx((c) => {
+      void c?.close().catch(() => {});
+      return null;
+    });
   }
 
   if (!settings.allowSongs) return null;
@@ -107,6 +175,15 @@ export function SongPicker({
             <p className="truncate text-sm font-semibold text-ink">{song.title}</p>
             <p className="truncate text-xs text-muted">{song.artist}</p>
           </div>
+          <button
+            type="button"
+            onClick={openTestPlayer}
+            aria-label="Tes putar lagu dan lirik"
+            className="focus-ring inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-br from-primary to-secondary px-3 py-2 text-xs font-bold text-white shadow-glow hover:brightness-110"
+          >
+            <Icon name="play" className="h-3.5 w-3.5" />
+            Tes putar
+          </button>
           <button
             type="button"
             onClick={() => {
@@ -129,9 +206,15 @@ export function SongPicker({
         />
         <div className="flex items-center justify-between gap-2 text-[11px] text-muted">
           <span>
-            {lyricState === "loading" && "Mencari lirik otomatis…"}
-            {lyricState === "ready" && "Lirik ditemukan — ketuk baris untuk memilih (maks. 200 huruf)."}
-            {lyricState === "none" && "Lirik tidak ditemukan. Kamu bisa mengetik kutipan sendiri."}
+            {lyricState === "loading"
+              ? "Mencari lirik otomatis…"
+              : aiState === "loading"
+                ? "AI merapikan lirik dan menyelaraskan musik…"
+                : lyricState === "ready"
+                  ? aiState === "ready"
+                    ? "Lirik dirapikan & diselaraskan AI (tes di tombol putar) — ketuk baris untuk memilih, lalu lanjut isi form."
+                    : "Lirik ditemukan — ketuk baris untuk memilih (maks. 200 huruf)."
+                  : "Lirik tidak ditemukan. Kamu bisa mengetik kutipan sendiri."}
           </span>
           <span className="tabular-nums">{lyric.length}/{LYRIC_MAX}</span>
         </div>
@@ -155,6 +238,16 @@ export function SongPicker({
               );
             })}
           </ul>
+        )}
+        {testing && (
+          <SongModal
+            song={song}
+            lyric={lyric}
+            ctx={ctx}
+            onClose={closeTestPlayer}
+            aiOffset={aiState === "ready" ? aiOffset : null}
+            aiSynced={aiState === "ready" ? aiSynced : undefined}
+          />
         )}
       </div>
     );
