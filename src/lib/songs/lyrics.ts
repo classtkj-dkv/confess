@@ -6,9 +6,17 @@
 const API = "https://lrclib.net/api";
 const UA = "CONFESS-school-app (https://github.com/)";
 
+export interface SyncedLine {
+  /** Detik posisi baris di lagu penuh. */
+  t: number;
+  text: string;
+}
+
 export interface LyricSuggestion {
   lines: string[];
   suggestion: string;
+  /** Lirik ber-timestamp (kosong kalau LRCLIB tidak punya versi synced). */
+  synced: SyncedLine[];
 }
 
 async function getJson(url: string): Promise<unknown> {
@@ -69,20 +77,70 @@ function pickSuggestion(raw: string, lines: string[]): string {
   return best || lines[0] || "";
 }
 
-export async function findLyrics(title: string, artist: string): Promise<LyricSuggestion | null> {
-  const q = new URLSearchParams({ track_name: title, artist_name: artist });
-  let raw = plainOf(await getJson(`${API}/get?${q}`));
-  if (!raw) {
-    const list = await getJson(`${API}/search?${q}`);
-    if (Array.isArray(list)) {
-      for (const item of list.slice(0, 5)) {
-        raw = plainOf(item);
-        if (raw) break;
-      }
+function syncedOf(v: unknown): SyncedLine[] {
+  if (!v || typeof v !== "object") return [];
+  const raw = (v as Record<string, unknown>).syncedLyrics;
+  if (typeof raw !== "string") return [];
+  const out: SyncedLine[] = [];
+  for (const row of raw.split(/\r?\n/)) {
+    const re = /\[(\d{1,3}):(\d{1,2}(?:[.:]\d{1,3})?)\]/g;
+    const stamps: number[] = [];
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(row))) {
+      const t = Number(m[1]) * 60 + Number(m[2].replace(":", "."));
+      if (Number.isFinite(t)) stamps.push(Math.round(t * 100) / 100);
     }
+    if (stamps.length === 0) continue;
+    const text = row.replace(/\[[^\]]*\]/g, "").replace(/\s+/g, " ").trim();
+    if (!text || text.length > 160) continue;
+    for (const t of stamps) out.push({ t, text });
   }
-  if (!raw) return null;
+  return out.sort((a, b) => a.t - b.t).slice(0, 300);
+}
+
+function norm(s: unknown): string {
+  return String(s ?? "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "");
+}
+
+function related(a: string, b: string): boolean {
+  return !!a && !!b && (a.includes(b) || b.includes(a));
+}
+
+/** Hasil pencarian bebas hanya dipakai kalau judul & artisnya mirip. */
+function sameSong(item: unknown, title: string, artist: string): boolean {
+  if (!item || typeof item !== "object") return false;
+  const o = item as Record<string, unknown>;
+  return related(norm(o.trackName), norm(title)) && related(norm(o.artistName), norm(artist));
+}
+
+async function findRecord(title: string, artist: string): Promise<unknown | null> {
+  const exact = new URLSearchParams({ track_name: title, artist_name: artist });
+  const direct = await getJson(`${API}/get?${exact}`);
+  let best: unknown | null = plainOf(direct) ? direct : null;
+  if (best && syncedOf(best).length > 0) return best;
+
+  const free = new URLSearchParams({ q: `${title} ${artist}` });
+  const [a, b] = await Promise.all([
+    getJson(`${API}/search?${exact}`),
+    getJson(`${API}/search?${free}`),
+  ]);
+  const pool = [a, b].flatMap((l) => (Array.isArray(l) ? l.slice(0, 8) : []));
+  for (const item of pool) {
+    if (!sameSong(item, title, artist)) continue;
+    if (syncedOf(item).length > 0) return item;
+    if (!best && plainOf(item)) best = item;
+  }
+  return best;
+}
+
+export async function findLyrics(title: string, artist: string): Promise<LyricSuggestion | null> {
+  const rec = await findRecord(title, artist);
+  if (!rec) return null;
+  const raw = plainOf(rec);
+  const synced = syncedOf(rec);
   const lines = clean(raw);
-  if (lines.length === 0) return null;
-  return { lines, suggestion: pickSuggestion(raw, lines) };
+  if (lines.length === 0 && synced.length === 0) return null;
+  return { lines, suggestion: pickSuggestion(raw, lines), synced };
 }

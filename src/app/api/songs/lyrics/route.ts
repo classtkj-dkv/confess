@@ -15,7 +15,11 @@ export async function GET(req: NextRequest): Promise<Response> {
     if (!track) throw new ApiError(404, "Lagu tidak ditemukan.");
     const found = await findLyrics(track.title, track.artist);
     return Response.json(
-      { lines: found?.lines ?? [], suggestion: found?.suggestion ?? "" },
+      {
+        lines: found?.lines ?? [],
+        suggestion: found?.suggestion ?? "",
+        synced: found?.synced ?? [],
+      },
       { headers: { "Cache-Control": "public, s-maxage=86400, stale-while-revalidate=604800" } }
     );
   } catch (err) {
