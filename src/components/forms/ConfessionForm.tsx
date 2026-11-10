@@ -32,6 +32,7 @@ export function ConfessionForm({ defaultCategory }: { defaultCategory?: string }
   const [lyric, setLyric] = useState("");
   const [revision, setRevision] = useState("");
   const [sentStatus, setSentStatus] = useState<"PENDING" | "PUBLISHED">("PENDING");
+  const [sentReview, setSentReview] = useState("none");
 
   // Nama pengirim diingat di browser ini supaya tidak perlu diketik ulang.
   useEffect(() => {
@@ -70,6 +71,7 @@ export function ConfessionForm({ defaultCategory }: { defaultCategory?: string }
         },
       });
       setSentStatus(res.status === "PUBLISHED" ? "PUBLISHED" : "PENDING");
+      setSentReview(String(res.review ?? "none"));
       setRevision("");
       try {
         if (fromName.trim()) localStorage.setItem(NAME_KEY, fromName.trim());
@@ -111,7 +113,13 @@ export function ConfessionForm({ defaultCategory }: { defaultCategory?: string }
         <p className="mx-auto mt-2 max-w-md text-sm text-muted">
           {sentStatus === "PUBLISHED"
             ? "Pesanmu lolos pengecekan dan sekarang bisa dilihat semua orang."
-            : "Akan tampil di feed setelah disetujui moderator."}
+            : sentReview === "user-limit"
+              ? "Batas pengecekan otomatis jam ini sudah terpakai, jadi pesanmu dicek moderator."
+              : sentReview === "full"
+                ? "Kuota persetujuan otomatis jam ini sedang penuh, jadi pesanmu dicek moderator."
+                : sentReview === "manual"
+                  ? "Pesanmu perlu dilihat moderator dulu sebelum tayang."
+                  : "Akan tampil di feed setelah disetujui moderator."}
         </p>
         <div className="mt-6 flex flex-wrap justify-center gap-2">
           <button

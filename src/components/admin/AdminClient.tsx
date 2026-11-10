@@ -70,6 +70,7 @@ interface AdminConfessionRow {
   createdAt: number;
   likesCount: number;
   commentsCount: number;
+  ai?: string;
 }
 
 interface AdminCommentRow {
@@ -427,6 +428,11 @@ function ConfessionRows({
                 >
                   {r.status}
                 </span>
+                {r.ai && (
+                  <span className="badge">
+                    AI: {r.ai === "approve" ? "menyetujui" : "serahkan ke moderator"}
+                  </span>
+                )}
                 <span className="ml-auto text-[11px] text-muted">
                   {formatDateTime(r.createdAt)} ·{" "}
                   <Icon name="heart" className="inline h-3 w-3 align-[-1px]" /> {r.likesCount} ·{" "}
@@ -915,6 +921,8 @@ function AnnouncementBase({
   const [allowConfessions, setAllowConfessions] = useState(true);
   const [allowSongs, setAllowSongs] = useState(true);
   const [aiModeration, setAiModeration] = useState(true);
+  const [aiTesting, setAiTesting] = useState(false);
+  const [aiTest, setAiTest] = useState<{ ok: boolean; text: string }[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
 
@@ -959,6 +967,42 @@ function AnnouncementBase({
       toast("error", err instanceof ApiClientError ? err.message : "Gagal menyimpan.");
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function testAi() {
+    setAiTesting(true);
+    setAiTest(null);
+    try {
+      const d = (await api("/api/admin/ai-test", { body: {} })) as {
+        configured: boolean;
+        model: string;
+        checks: {
+          label: string;
+          expected: string;
+          verdict: string | null;
+          ok: boolean;
+          ms: number;
+          error: string;
+        }[];
+      };
+      if (!d.configured) {
+        setAiTest([{ ok: false, text: "OPENROUTER_API_KEY belum diisi di environment Vercel." }]);
+      } else {
+        setAiTest([
+          { ok: true, text: `Model: ${d.model}` },
+          ...d.checks.map((c) => ({
+            ok: c.ok,
+            text: c.error
+              ? `${c.label}: GAGAL. ${c.error}`
+              : `${c.label}: AI menjawab "${c.verdict}" (${(c.ms / 1000).toFixed(1)} dtk)${c.ok ? "" : `, diharapkan "${c.expected}"`}`,
+          })),
+        ]);
+      }
+    } catch (err) {
+      setAiTest([{ ok: false, text: err instanceof ApiClientError ? err.message : "Tes AI gagal." }]);
+    } finally {
+      setAiTesting(false);
     }
   }
 
@@ -1045,6 +1089,28 @@ function AnnouncementBase({
               }}
               label="Moderasi AI"
             />
+          </div>
+        )}
+        {withMaintenance && (
+          <div className="space-y-2 p-5">
+            <button
+              type="button"
+              disabled={aiTesting}
+              onClick={() => void testAi()}
+              className="btn-ghost px-3 py-1.5 text-xs"
+            >
+              {aiTesting ? "Menguji AI…" : "Tes koneksi AI"}
+            </button>
+            {aiTest && (
+              <ul className="space-y-1 text-xs">
+                {aiTest.map((l, i) => (
+                  <li key={i} className={l.ok ? "text-success" : "text-warning"}>
+                    {l.ok ? "✓ " : "✗ "}
+                    {l.text}
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         )}
         {withMaintenance && (

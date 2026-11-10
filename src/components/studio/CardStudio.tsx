@@ -13,7 +13,8 @@ export interface StudioData {
 }
 
 type Align = "left" | "center" | "right";
-type Ratio = "story" | "post" | "square";
+type PresetRatio = "story" | "post" | "square";
+type Ratio = PresetRatio | "photo";
 type ElId = "title" | "to" | "from" | "message" | "song" | "lyric";
 type SongStyle = "vinyl" | "cover" | "pill" | "card" | "cassette" | "text";
 type BgMode = "gen" | "custom" | "image";
@@ -36,11 +37,21 @@ const HAS_LABEL: Record<ElId, boolean> = {
   lyric: false,
 };
 
-const SIZES: Record<Ratio, { w: number; h: number; label: string }> = {
+const SIZES: Record<PresetRatio, { w: number; h: number; label: string }> = {
   story: { w: 1080, h: 1920, label: "Story 9:16" },
   post: { w: 1080, h: 1350, label: "Post 4:5" },
   square: { w: 1080, h: 1080, label: "Kotak 1:1" },
 };
+
+/** Ukuran kartu. "photo" = mengikuti rasio foto agar tampil penuh tanpa dipotong. */
+function dims(d: { ratio: Ratio; photoAspect: number }): { w: number; h: number } {
+  if (d.ratio === "photo") return { w: 1080, h: Math.round(clamp(d.photoAspect, 0.5, 2.5) * 1080) };
+  return SIZES[d.ratio];
+}
+
+/** Kecepatan: satu putaran piringan = satu loop GIF (standar santai ala IG). */
+const LOOP_SECONDS = 8;
+const GIF_FPS = 10;
 
 const PALETTES = [
   { name: "Laut", stops: ["#e3f6fa", "#a9dcea", "#6db3d8"], text: "#0b3d91" },
@@ -132,6 +143,13 @@ interface Design {
   bgDeco: boolean;
   overlay: number;
   overlayColor: string;
+  /** Foto: penuh (tidak dipotong) atau isi kartu (dipotong). */
+  bgFit: "contain" | "cover";
+  /** Ruang kosong di sekitar foto penuh. */
+  bgPad: "blur" | "color";
+  bgPadColor: string;
+  /** Tinggi/lebar foto, dipakai saat ukuran kartu "Ikuti foto". */
+  photoAspect: number;
   font: string;
   color: string;
   title: string;
@@ -391,12 +409,30 @@ function drawDeco(ctx: CanvasRenderingContext2D, W: number, H: number, seed: num
 
 function drawBackground(ctx: CanvasRenderingContext2D, W: number, H: number, d: Design, bg: HTMLImageElement | null) {
   if (d.bgMode === "image" && bg) {
+    const iw = bg.naturalWidth;
+    const ih = bg.naturalHeight;
+    const kCover = Math.max(W / iw, H / ih);
+    const kFit = Math.min(W / iw, H / ih);
     ctx.fillStyle = "#000";
     ctx.fillRect(0, 0, W, H);
-    const k = Math.max(W / bg.naturalWidth, H / bg.naturalHeight);
-    const dw = bg.naturalWidth * k;
-    const dh = bg.naturalHeight * k;
-    ctx.drawImage(bg, (W - dw) / 2, (H - dh) / 2, dw, dh);
+    if (d.bgFit === "contain" && kCover - kFit > 0.001) {
+      // foto penuh tanpa dipotong; ruang kosong diisi blur foto itu sendiri atau satu warna
+      if (d.bgPad === "blur") {
+        ctx.save();
+        if ("filter" in ctx) ctx.filter = `blur(${Math.round(W * 0.03)}px)`;
+        const kb = kCover * 1.1;
+        ctx.drawImage(bg, (W - iw * kb) / 2, (H - ih * kb) / 2, iw * kb, ih * kb);
+        ctx.restore();
+        ctx.fillStyle = "rgba(0,0,0,0.25)";
+        ctx.fillRect(0, 0, W, H);
+      } else {
+        ctx.fillStyle = d.bgPadColor;
+        ctx.fillRect(0, 0, W, H);
+      }
+      ctx.drawImage(bg, (W - iw * kFit) / 2, (H - ih * kFit) / 2, iw * kFit, ih * kFit);
+    } else {
+      ctx.drawImage(bg, (W - iw * kCover) / 2, (H - ih * kCover) / 2, iw * kCover, ih * kCover);
+    }
     if (d.overlay > 0) {
       ctx.save();
       ctx.globalAlpha = d.overlay;
@@ -445,7 +481,7 @@ function drawBackgroundCached(ctx: CanvasRenderingContext2D, W: number, H: numbe
     id = imgIds.get(bg) ?? ++imgSeq;
     imgIds.set(bg, id);
   }
-  const key = [W, H, d.bgMode, d.palette, d.seed, d.bgA, d.bgB, d.bgAngle, d.bgDeco, d.overlay, d.overlayColor, d.bgMode === "image" ? d.color : "", id].join("|");
+  const key = [W, H, d.bgMode, d.palette, d.seed, d.bgA, d.bgB, d.bgAngle, d.bgDeco, d.overlay, d.overlayColor, d.bgMode === "image" ? d.color : "", d.bgFit, d.bgPad, d.bgPadColor, id].join("|");
   if (!bgCache || bgCache.key !== key) {
     const c = document.createElement("canvas");
     c.width = W;
@@ -600,7 +636,7 @@ function paint(
       roundRect(ctx, ex, ey, es, es, es * 0.18);
       ctx.fillStyle = "rgba(190,190,190,0.9)";
       ctx.fill();
-      const freq = [3, 5, 4, 2];
+      const freq = [6, 9, 7, 5];
       const off = [0, 0.25, 0.5, 0.75];
       const bwid = es * 0.11;
       const gap = es * 0.09;
@@ -877,7 +913,7 @@ function renderCard(
   guides: { selected: ElId | null; snapX: boolean; snapY: boolean; unit: number } | null,
   phase = 0
 ): Boxes {
-  const { w: W, h: H } = SIZES[d.ratio];
+  const { w: W, h: H } = dims(d);
   if (canvas.width !== W) canvas.width = W;
   if (canvas.height !== H) canvas.height = H;
   const ctx = canvas.getContext("2d");
@@ -943,7 +979,7 @@ function renderCard(
 
 /** Menyusun elemen yang tampil dari atas ke bawah, di tengah, dan muat di kartu. */
 function autoLayout(d: Design, c: Content): Design {
-  const { w: W, h: H } = SIZES[d.ratio];
+  const { w: W, h: H } = dims(d);
   const ctx = document.createElement("canvas").getContext("2d");
   if (!ctx) return d;
   const norm: Design = {
@@ -1030,8 +1066,12 @@ function defaultDesign(content: Content, hasLyric: boolean): Design {
     bgB: "#6db3d8",
     bgAngle: 135,
     bgDeco: true,
-    overlay: 0.15,
+    overlay: 0,
     overlayColor: "",
+    bgFit: "contain",
+    bgPad: "blur",
+    bgPadColor: "#000000",
+    photoAspect: 16 / 9,
     font: "dancing",
     color: PALETTES[0].text,
     title: content.song ? "Menfess Songs" : "Menfess",
@@ -1100,7 +1140,7 @@ function sanitizeDesign(raw: unknown, fb: Design): Design {
   const r = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
   const els = (r.els && typeof r.els === "object" ? r.els : {}) as Record<string, unknown>;
   return {
-    ratio: pick(r.ratio, ["story", "post", "square"] as const, fb.ratio),
+    ratio: pick(r.ratio, ["story", "post", "square", "photo"] as const, fb.ratio),
     bgMode: pick(r.bgMode, ["gen", "custom", "image"] as const, fb.bgMode),
     palette: Math.round(num(r.palette, 0, PALETTES.length - 1, fb.palette)),
     seed: Math.round(num(r.seed, 0, 100000, fb.seed)),
@@ -1110,6 +1150,10 @@ function sanitizeDesign(raw: unknown, fb: Design): Design {
     bgDeco: bool(r.bgDeco, fb.bgDeco),
     overlay: num(r.overlay, 0, 0.9, fb.overlay),
     overlayColor: colAuto(r.overlayColor, fb.overlayColor),
+    bgFit: pick(r.bgFit, ["contain", "cover"] as const, fb.bgFit),
+    bgPad: pick(r.bgPad, ["blur", "color"] as const, fb.bgPad),
+    bgPadColor: colReq(r.bgPadColor, fb.bgPadColor),
+    photoAspect: num(r.photoAspect, 0.5, 2.5, fb.photoAspect),
     font: pick(r.font, FONT_IDS, fb.font),
     color: colReq(r.color, fb.color),
     title: text(r.title, 40, fb.title),
@@ -1314,6 +1358,7 @@ function medianCut(px: Uint32Array, nColors: number): Uint8Array {
 
 /** Tabel 5-5-5 bit → indeks warna palet terdekat (pemetaan piksel jadi cepat). */
 function buildLut(pal: Uint8Array): Uint8Array {
+  // indeks 255 dicadangkan sebagai warna transparan (frame selisih)
   const lut = new Uint8Array(32768);
   for (let c = 0; c < 32768; c++) {
     const r = ((c >> 10) & 31) * 8 + 4;
@@ -1321,7 +1366,7 @@ function buildLut(pal: Uint8Array): Uint8Array {
     const b = (c & 31) * 8 + 4;
     let best = 0;
     let bd = Infinity;
-    for (let i = 0; i < 256; i++) {
+    for (let i = 0; i < 255; i++) {
       const dr = r - pal[i * 3];
       const dg = g - pal[i * 3 + 1];
       const db = b - pal[i * 3 + 2];
@@ -1423,6 +1468,63 @@ function lzwEncode(idx: Uint8Array, out: Bytes) {
     out.bytes(block, bl);
   }
   out.byte(0);
+}
+
+/**
+ * Menulis satu frame. Frame setelah yang pertama hanya memuat area yang berubah
+ * (piksel tak berubah = transparan), jadi GIF jauh lebih kecil dan tetap tajam.
+ */
+function writeGifFrame(out: Bytes, idx: Uint8Array, prev: Uint8Array | null, w: number, h: number, delayCs: number) {
+  let x0 = 0;
+  let y0 = 0;
+  let x1 = w - 1;
+  let y1 = h - 1;
+  if (prev) {
+    x0 = w;
+    y0 = h;
+    x1 = -1;
+    y1 = -1;
+    for (let y = 0; y < h; y++) {
+      const row = y * w;
+      for (let x = 0; x < w; x++) {
+        if (idx[row + x] !== prev[row + x]) {
+          if (x < x0) x0 = x;
+          if (x > x1) x1 = x;
+          if (y < y0) y0 = y;
+          if (y > y1) y1 = y;
+        }
+      }
+    }
+    if (x1 < 0) {
+      x0 = 0;
+      y0 = 0;
+      x1 = 0;
+      y1 = 0;
+    }
+  }
+  const bw = x1 - x0 + 1;
+  const bh = y1 - y0 + 1;
+  const sub = new Uint8Array(bw * bh);
+  for (let y = 0; y < bh; y++) {
+    for (let x = 0; x < bw; x++) {
+      const o = (y0 + y) * w + x0 + x;
+      sub[y * bw + x] = prev && idx[o] === prev[o] ? 255 : idx[o];
+    }
+  }
+  out.byte(0x21);
+  out.byte(0xf9);
+  out.byte(4);
+  out.byte(prev ? 0x05 : 0x04);
+  out.u16(delayCs);
+  out.byte(prev ? 255 : 0);
+  out.byte(0);
+  out.byte(0x2c);
+  out.u16(x0);
+  out.u16(y0);
+  out.u16(bw);
+  out.u16(bh);
+  out.byte(0);
+  lzwEncode(sub, out);
 }
 
 /* ───────────── komponen kecil ───────────── */
@@ -1589,7 +1691,7 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
   const [zoom, setZoom] = useState(1);
   const [histTick, setHistTick] = useState(0);
   const [playing, setPlaying] = useState(true);
-  const [gifW, setGifW] = useState(480);
+  const [gifW, setGifW] = useState(720);
   const [gifMsg, setGifMsg] = useState("");
   const phaseRef = useRef(0);
   const gifBusyRef = useRef(false);
@@ -1718,7 +1820,7 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
     const canvas = canvasRef.current;
     if (!canvas) return;
     const rect = canvas.getBoundingClientRect();
-    const unit = rect.width > 0 ? SIZES[design.ratio].w / rect.width : 3;
+    const unit = rect.width > 0 ? dims(design).w / rect.width : 3;
     boxesRef.current = renderCard(
       canvas,
       design,
@@ -1742,7 +1844,7 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
     const loop = (now: number) => {
       if (!gifBusyRef.current && now - last >= 33) {
         last = now;
-        phaseRef.current = (now / 3000) % 1;
+        phaseRef.current = (now / (LOOP_SECONDS * 1000)) % 1;
         renderRef.current();
       }
       raf = requestAnimationFrame(loop);
@@ -1853,14 +1955,29 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
     }
     try {
       const blob = await shrinkImage(file, 2200, 0.9);
-      await setBackground(blob);
-      setD({ bgMode: "image" });
+      const img = await setBackground(blob);
+      if (!img) throw new Error("img");
+      // Foto tampil penuh: kalau rasionya beda dari ukuran kartu, kartu mengikuti foto.
+      const aspect = clamp(img.naturalHeight / img.naturalWidth, 0.5, 2.5);
+      const cur = dims(designRef.current);
+      const differs = Math.abs(aspect / (cur.h / cur.w) - 1) > 0.04;
+      const toPhoto = designRef.current.ratio === "photo" || differs;
+      setDesign((p) => {
+        const next: Design = {
+          ...p,
+          bgMode: "image",
+          photoAspect: aspect,
+          ratio: toPhoto ? "photo" : p.ratio,
+        };
+        return touched.current ? next : autoLayout(next, content);
+      });
+      setInfo(toPhoto ? "Ukuran kartu mengikuti foto supaya tampil penuh tanpa dipotong." : "");
     } catch {
       setError("Gambar tidak bisa dibaca.");
     }
   }
 
-  async function setBackground(blob: Blob | null) {
+  async function setBackground(blob: Blob | null): Promise<HTMLImageElement | null> {
     if (bgUrlRef.current) {
       URL.revokeObjectURL(bgUrlRef.current);
       bgUrlRef.current = null;
@@ -1868,13 +1985,14 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
     if (!blob) {
       setBgImg(null);
       setBgBlob(null);
-      return;
+      return null;
     }
     const url = URL.createObjectURL(blob);
     const img = await loadImg(url);
     bgUrlRef.current = url;
     setBgImg(img);
     setBgBlob(blob);
+    return img;
   }
 
   /* ── template ── */
@@ -2035,7 +2153,12 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
   }
 
   /* ── ekspor gambar ── */
-  function toBlob(): Promise<Blob | null> {
+  async function toBlob(): Promise<Blob | null> {
+    try {
+      await document.fonts?.ready;
+    } catch {
+      /* abaikan */
+    }
     return new Promise((resolve) => {
       try {
         const c = document.createElement("canvas");
@@ -2078,11 +2201,16 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
 
   /* ── GIF animasi (satu putaran penuh = satu loop, jadi mulus) ── */
   async function makeGif(): Promise<Blob | null> {
+    try {
+      await document.fonts?.ready;
+    } catch {
+      /* abaikan */
+    }
     const d = designRef.current;
-    const { w: W, h: H } = SIZES[d.ratio];
+    const { w: W, h: H } = dims(d);
     const outW = gifW;
     const outH = Math.max(2, Math.round((outW * H) / W));
-    const N = 40;
+    const N = LOOP_SECONDS * GIF_FPS;
     const full = document.createElement("canvas");
     const small = document.createElement("canvas");
     small.width = outW;
@@ -2098,20 +2226,20 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
     };
     gifBusyRef.current = true;
     try {
-      // 1) palet global dari beberapa frame contoh
-      const stride = Math.max(1, Math.floor((outW * outH) / 9000));
+      // 1) palet global (255 warna + 1 transparan) dari frame contoh yang tersebar
+      const stride = Math.max(1, Math.floor((outW * outH) / 12000));
       const samples: number[] = [];
-      for (const i of [0, 7, 14, 21, 28, 35]) {
-        const px = grab(i);
+      for (let j = 0; j < 8; j++) {
+        const px = grab(Math.floor((j * N) / 8));
         for (let q = 0; q < outW * outH; q += stride) {
           const o = q * 4;
           samples.push((px[o] << 16) | (px[o + 1] << 8) | px[o + 2]);
         }
       }
-      const palette = medianCut(Uint32Array.from(samples), 256);
+      const palette = medianCut(Uint32Array.from(samples), 255);
       const lut = buildLut(palette);
 
-      // 2) tulis tiap frame langsung (hemat memori)
+      // 2) tulis frame satu per satu (hemat memori)
       const out = new Bytes();
       out.str("GIF89a");
       out.u16(outW);
@@ -2128,24 +2256,13 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
       out.byte(1);
       out.u16(0);
       out.byte(0);
+      let prev: Uint8Array | null = null;
       for (let i = 0; i < N; i++) {
         setGifMsg(`Membuat GIF… ${i + 1}/${N}`);
         await new Promise((r) => setTimeout(r, 0));
         const idx = quantize(grab(i), outW, outH, lut);
-        out.byte(0x21);
-        out.byte(0xf9);
-        out.byte(4);
-        out.byte(0x04);
-        out.u16(8);
-        out.byte(0);
-        out.byte(0);
-        out.byte(0x2c);
-        out.u16(0);
-        out.u16(0);
-        out.u16(outW);
-        out.u16(outH);
-        out.byte(0);
-        lzwEncode(idx, out);
+        writeGifFrame(out, idx, prev, outW, outH, Math.round(100 / GIF_FPS));
+        prev = idx;
       }
       out.byte(0x3b);
       return new Blob([out.done()], { type: "image/gif" });
@@ -2301,7 +2418,7 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
 
     const g = gestureRef.current;
     if (!g) return;
-    const { w: W, h: H } = SIZES[designRef.current.ratio];
+    const { w: W, h: H } = dims(designRef.current);
     const { el0, c0, bw0, h0, sy0 } = g;
     const rot = (el0.rotation * Math.PI) / 180;
     touched.current = true;
@@ -2522,7 +2639,7 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
                 onKeyDown={onKeyDown}
                 className="mx-auto block rounded-lg shadow-lift outline-none focus-visible:ring-2 focus-visible:ring-primary"
                 style={{
-                  width: `calc(min(100%, ${((62 * SIZES[design.ratio].w) / SIZES[design.ratio].h).toFixed(3)}vh) * ${zoom})`,
+                  width: `calc(min(100%, ${((62 * dims(design).w) / dims(design).h).toFixed(3)}vh) * ${zoom})`,
                   height: "auto",
                   maxWidth: "none",
                   touchAction: "none",
@@ -2552,9 +2669,9 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
                 disabled={Boolean(gifMsg)}
                 className="input w-auto py-1.5 text-xs"
               >
+                <option value={720}>GIF HD (terbaik)</option>
+                <option value={540}>GIF sedang</option>
                 <option value={360}>GIF kecil</option>
-                <option value={480}>GIF sedang</option>
-                <option value={640}>GIF besar</option>
               </select>
               <button
                 type="button"
@@ -2774,6 +2891,48 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
               )}
               {design.bgMode === "image" && (
                 <div className="space-y-3">
+                  <Seg
+                    label="Cara menampilkan foto"
+                    value={design.bgFit}
+                    onChange={(v) => setD({ bgFit: v })}
+                    options={[
+                      { id: "contain", label: "Penuh (tidak dipotong)" },
+                      { id: "cover", label: "Isi kartu (dipotong)" },
+                    ]}
+                  />
+                  {design.bgFit === "contain" && (
+                    <>
+                      <Seg
+                        label="Ruang kosong di sekitar foto"
+                        value={design.bgPad}
+                        onChange={(v) => setD({ bgPad: v })}
+                        options={[
+                          { id: "blur", label: "Blur foto" },
+                          { id: "color", label: "Satu warna" },
+                        ]}
+                      />
+                      {design.bgPad === "color" && (
+                        <ColorField label="Warna ruang kosong" value={design.bgPadColor} fallback="#000000" onChange={(v) => setD({ bgPadColor: v })} />
+                      )}
+                      {bgImg && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setDesign((p) =>
+                              relayoutIfFresh({
+                                ...p,
+                                ratio: "photo",
+                                photoAspect: clamp(bgImg.naturalHeight / bgImg.naturalWidth, 0.5, 2.5),
+                              })
+                            )
+                          }
+                          className="text-xs font-semibold text-primary"
+                        >
+                          Sesuaikan ukuran kartu dengan foto
+                        </button>
+                      )}
+                    </>
+                  )}
                   <Range label="Kekuatan penutup" value={design.overlay} min={0} max={0.9} step={0.05} onChange={(v) => setD({ overlay: v })} />
                   <ColorField label="Warna penutup" value={design.overlayColor} fallback="#000000" auto onChange={(v) => setD({ overlayColor: v })} />
                 </div>
@@ -3020,8 +3179,20 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
               <Seg
                 label="Ukuran kartu"
                 value={design.ratio}
-                onChange={(v) => setDesign((p) => relayoutIfFresh({ ...p, ratio: v }))}
-                options={(Object.keys(SIZES) as Ratio[]).map((id) => ({ id, label: SIZES[id].label }))}
+                onChange={(v) =>
+                  setDesign((p) =>
+                    relayoutIfFresh({
+                      ...p,
+                      ratio: v,
+                      photoAspect:
+                        v === "photo" && bgImg ? clamp(bgImg.naturalHeight / bgImg.naturalWidth, 0.5, 2.5) : p.photoAspect,
+                    })
+                  )
+                }
+                options={[
+                  ...(Object.keys(SIZES) as PresetRatio[]).map((id) => ({ id: id as Ratio, label: SIZES[id].label })),
+                  { id: "photo" as Ratio, label: "Ikuti foto" },
+                ]}
               />
               <label className="block text-xs text-muted">
                 Font utama

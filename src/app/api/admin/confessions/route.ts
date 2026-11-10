@@ -55,6 +55,10 @@ export async function GET(req: NextRequest): Promise<Response> {
         status: String(data.status ?? "PENDING"),
         likesCount: Number(data.likesCount ?? 0),
         commentsCount: Number(data.commentsCount ?? 0),
+        ai:
+          data.moderation && (data.moderation as Record<string, unknown>).by === "ai"
+            ? String((data.moderation as Record<string, unknown>).verdict ?? "")
+            : "",
       }));
 
     return Response.json({ items, page, pageSize });
