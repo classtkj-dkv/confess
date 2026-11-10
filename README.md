@@ -194,16 +194,21 @@ otomatis digantikan key berikutnya. Alurnya:
 5. Admin bisa mematikan lewat toggle **Moderasi AI** di panel pengaturan.
 
 ### AI musik pasang lirik saat pilih lagu (form)
-Tugas AI ini pakai **key sendiri** (prefiks `MUSIC_AI_`)/bukan key moderasi:
+Tugas AI ini pakai **key sendiri** (prefiks `MUSIC_AI_`) — bukan key moderasi:
 - Saat lagu dipilih di form confession, lirik dari LRCLIB dirapikan & disusun oleh AI dulu
   (typo dibenahi, baris terpotong digabung, label seperti `[Verse]` dibuang, bagian instrumental ditandai
   `music: true`) sebelum form dilanjutkan.
 - AI musik juga menaksir **titik mulai preview** potongan Deezer 30 detik supaya lirik tidak muncul mendahului
   musik ("terlalu cepet"). Tombol **Tes putar** di pemilih lagu membuka pemutar beserta lirik hasil AI:
   cek sinkronnya di situ; penyesuaian offset manual per perangkat tetap diingat seperti sebelumnya.
-- Hasilnya di-cache per lagu (6 jam) dan dibatasi 30 kali per pengguna / 10 menit (`songLyricAi` di `rateLimit.ts`).
-- Bila `MUSIC_AI_*` tidak diisi, sungguhan tidak ada pemakaian kuota AI moderasi — pemutar memakai versi dasar
-  (LRCLIB + taksiran kasar). Bawaan model musik: `openai/gpt-4.1-mini` (murah, cukup untuk menyusun lirik).
+- **Auto-align otomatis (tanpa AI, tanpa kalibrasi manual)**: pemutar (`src/lib/songs/align.ts`) menganalisa
+  audio preview sendiri di browser — energi band vokal (200 Hz–3,6 kHz) → memilih offset yang membuat baris
+  dinyanyikan jatuh di bagian "hidup vokal" dan penanda musik di bagian tenang. Dipakai bila keyakinannya ≥ 0,45;
+  estimasi AI dipakai sebagai batas pencarian (±25 dtk) supaya reff serupa tidak menipu. Hasil per lagu di-cache
+  (`confess:lyric-align:{id}`) dan pengguna yang sudah kalibrasi manual tidak pernah ditimpa.
+- Hasil perapian lirik di-cache per lagu (6 jam) dan dibatasi 30 kali per pengguna / 10 menit (`songLyricAi` di `rateLimit.ts`).
+- Bila `MUSIC_AI_*` tidak diisi, pemutar tetap sinkron via **auto-align** — hanya merapian teks lirik yang
+  melewati LRCLIB mentah. Bawaan model musik: `openai/gpt-4.1-mini` (murah, cukup untuk menyusun lirik).
 
 Keputusan AI tersimpan di data privat (`confessions/{id}/moderation`). Komentar belum dimoderasi AI.
 

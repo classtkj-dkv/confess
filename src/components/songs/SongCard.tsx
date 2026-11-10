@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Icon } from "@/components/ui/Icon";
 import { api } from "@/lib/api";
+import { alignPreview, monoMixdown } from "@/lib/songs/align";
 import type { Song } from "@/types";
 
 export function SongCover({ song, size = 48 }: { song: Song; size?: number }) {
@@ -188,6 +189,35 @@ function MusicNote({ active }: { active: boolean }) {
 }
 
 const offsetKey = (id: string) => `confess:lyric-offset:${id}`;
+const alignKey = (id: string) => `confess:lyric-align:${id}`;
+
+function savedOffset(id: string): number | null {
+  try {
+    const raw = localStorage.getItem(offsetKey(id));
+    if (raw !== null && Number.isFinite(Number(raw))) return Number(raw);
+  } catch {
+    /* abaikan */
+  }
+  return null;
+}
+
+function savedAlign(id: string): number | null {
+  try {
+    const raw = localStorage.getItem(alignKey(id));
+    if (raw !== null && Number.isFinite(Number(raw))) return Number(raw);
+  } catch {
+    /* abaikan */
+  }
+  return null;
+}
+
+function storeAlign(id: string, offset: number): void {
+  try {
+    localStorage.setItem(alignKey(id), String(offset));
+  } catch {
+    /* abaikan */
+  }
+}
 
 export function SongModal({
   song,
@@ -216,6 +246,7 @@ export function SongModal({
   const [offset, setOffset] = useState(0);
   const [calibrated, setCalibrated] = useState(false);
   const [active, setActive] = useState(-1);
+  const [aligning, setAligning] = useState(false);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
@@ -224,33 +255,64 @@ export function SongModal({
   const lyricBoxRef = useRef<HTMLDivElement | null>(null);
   const lineRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const touchedAt = useRef(0);
+  /** Dibesarkan saat pengguna kalibrasi/geser sendiri → hasil auto-align tak menimpanya. */
+  const userAdjusted = useRef(false);
   const live = useRef({ playing: false, offset: 0, synced: [] as SyncedLine[] });
   live.current = { playing, offset, synced };
 
   // Lirik ber-timestamp + offset tersimpan (kalau pernah disesuaikan di perangkat ini).
   useEffect(() => {
     let cancelled = false;
-    const apply = (lines: SyncedLine[]) => {
-      setSynced(lines);
-      let saved: number | null = null;
-      try {
-        const raw = localStorage.getItem(offsetKey(song.id));
-        if (raw !== null && Number.isFinite(Number(raw))) saved = Number(raw);
-      } catch {
-        /* abaikan */
-      }
+    const autoAlign = (id: string, lines: SyncedLine[], prior: number | null) => {
+      if (userAdjusted.current) return;
+      setAligning(true);
+      void (async () => {
+        let decoded: AudioBuffer | null = null;
+        try {
+          const res = await fetch(`/api/songs/preview?id=${encodeURIComponent(id)}`);
+          if (!res.ok) return;
+          const bytes = await res.arrayBuffer();
+          // decodeAudioData tetap jalan di ctx suspended; bila ctx belum ada
+          // (buka modal tanpa putar), buat context sementara untuk decode.
+          const dec = ctx ?? new AudioContext();
+          decoded = await dec.decodeAudioData(bytes);
+          if (!ctx) void dec.close().catch(() => {});
+        } catch {
+          return; // analisa gagal → taksiran kasar dipakai
+        }
+        if (!decoded || cancelled) return;
+        const mono = monoMixdown(decoded);
+        const result = alignPreview(lines, mono, decoded.sampleRate, prior ?? undefined);
+        if (cancelled) return;
+        // Keyakinan rendah (banyak kemiripan) → taksiran awal lebih aman.
+        if (result.confidence >= 0.45 && !userAdjusted.current) {
+          setOffset(result.offset);
+          storeAlign(id, result.offset);
+        }
+        setAligning(false);
+      })();
+    };
+    const applyOffset = (lines: SyncedLine[]) => {
+      const saved = savedOffset(song.id);
       setCalibrated(saved !== null);
-      setOffset(saved ?? (aiOffset ?? guessOffset(lines, lyric)));
+      setOffset(saved ?? savedAlign(song.id) ?? (aiOffset ?? guessOffset(lines, lyric)));
+      // Tanpa kalibrasi manual & tanpa cache → analisa audio sekali per lagu.
+      if (!saved && lines.length >= 4 && savedAlign(song.id) === null) {
+        autoAlign(song.id, lines, aiOffset ?? null);
+      }
     };
     if (aiSynced && aiSynced.length >= 2) {
       // Lirik versi AI sudah disiapkan di form — tidak perlu fetch lagi.
-      apply(aiSynced);
+      setSynced(aiSynced);
+      applyOffset(aiSynced);
       return;
     }
     api(`/api/songs/lyrics?id=${encodeURIComponent(song.id)}`, { method: "GET", auth: false })
       .then((d) => {
         if (cancelled) return;
-        apply(readSynced(d.synced));
+        const lines = readSynced(d.synced);
+        setSynced(lines);
+        if (lines.length >= 2) applyOffset(lines);
       })
       .catch(() => {});
     return () => {
@@ -421,6 +483,7 @@ export function SongModal({
   function seek(v: number) {
     const a = audioRef.current;
     if (!a) return;
+    userAdjusted.current = true;
     a.currentTime = v;
     setTime(v);
   }
@@ -429,6 +492,7 @@ export function SongModal({
   function syncTo(i: number) {
     const a = audioRef.current;
     if (!a || !synced[i]) return;
+    userAdjusted.current = true;
     const next = synced[i].t - a.currentTime;
     setOffset(next);
     setCalibrated(true);
@@ -447,8 +511,9 @@ export function SongModal({
     } catch {
       /* abaikan */
     }
+    userAdjusted.current = false;
     setCalibrated(false);
-    setOffset(aiOffset ?? guessOffset(synced, lyric));
+    setOffset(savedAlign(song.id) ?? (aiOffset ?? guessOffset(synced, lyric)));
   }
 
   const pct = duration > 0 ? Math.min(100, (time / duration) * 100) : 0;
@@ -650,9 +715,11 @@ export function SongModal({
               ))}
             </div>
             <p className="mt-1.5 text-center text-[11px] text-white/40">
-              {calibrated
-                ? "Lirik sudah disesuaikan. Ketuk baris lain untuk mengatur ulang."
-                : "Lirik belum pas? Ketuk baris yang sedang dinyanyikan."}
+              {aligning
+                ? "Menyelaraskan lirik dengan musik otomatis…"
+                : calibrated
+                  ? "Lirik sudah disesuaikan. Ketuk baris lain untuk mengatur ulang."
+                  : "Lirik belum pas? Ketuk baris yang sedang dinyanyikan."}
               {calibrated && (
                 <>
                   {" "}
