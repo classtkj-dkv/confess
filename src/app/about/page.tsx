@@ -11,17 +11,17 @@ export const metadata: Metadata = {
 
 export default function AboutPage() {
   return (
-    <div className="mx-auto max-w-3xl space-y-5">
+    <div className="space-y-6">
       <header>
-        <h1 className="page-title">Tentang CONFESS</h1>
-        <p className="page-lead mt-2 max-w-2xl">
+        <h1 className="text-xl font-bold text-ink">Tentang CONFESS</h1>
+        <p className="mt-1 max-w-2xl text-sm leading-relaxed text-muted">
           CONFESS adalah ruang berbagi cerita anonim untuk satu lingkungan
           sekolah — tempat mengulurkan perasaan, opini, atau pengalaman tanpa
           takut dihakimi.
         </p>
       </header>
 
-      <section className="card p-6 sm:p-7" aria-labelledby="tujuan">
+      <section className="card p-6" aria-labelledby="tujuan">
         <h2 id="tujuan" className="flex items-center gap-2 text-base font-bold text-ink"><Icon name="target" className="h-4 w-4 text-primary" />Tujuan</h2>
         <ul className="mt-3 list-disc space-y-2 pl-5 text-sm text-muted">
           <li>
@@ -37,7 +37,7 @@ export default function AboutPage() {
         </ul>
       </section>
 
-      <section className="card p-6 sm:p-7" aria-labelledby="aturan">
+      <section className="card p-6" aria-labelledby="aturan">
         <h2 id="aturan" className="flex items-center gap-2 text-base font-bold text-ink"><Icon name="book" className="h-4 w-4 text-primary" />Aturan komunitas</h2>
         <ul className="mt-3 list-disc space-y-2 pl-5 text-sm text-muted">
           <li>Confession melewati moderasi sebelum tampil publik.</li>
@@ -49,7 +49,7 @@ export default function AboutPage() {
         </ul>
       </section>
 
-      <section className="card p-6 sm:p-7" aria-labelledby="lapor">
+      <section className="card p-6" aria-labelledby="lapor">
         <h2 id="lapor" className="flex items-center gap-2 text-base font-bold text-ink"><Icon name="flag" className="h-4 w-4 text-primary" />Hal yang bisa dilaporkan</h2>
         <p className="mt-2 text-sm text-muted">
           Setiap confession memiliki tombol laporan. Alasan yang tersedia:
@@ -61,7 +61,7 @@ export default function AboutPage() {
         </ul>
       </section>
 
-      <section className="card p-6 sm:p-7" aria-labelledby="privasi">
+      <section className="card p-6" aria-labelledby="privasi">
         <h2 id="privasi" className="flex items-center gap-2 text-base font-bold text-ink"><Icon name="lock" className="h-4 w-4 text-primary" />Kebijakan privasi</h2>
         <ul className="mt-3 list-disc space-y-2 pl-5 text-sm text-muted">
           <li>Tidak butuh email — akun anonim dibuat otomatis di belakang layar.</li>

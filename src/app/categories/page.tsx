@@ -12,8 +12,8 @@ export default function CategoriesPage() {
   return (
     <div className="space-y-5">
       <header>
-        <h1 className="page-title">Kategori</h1>
-        <p className="page-lead mt-1">
+        <h1 className="text-xl font-bold text-ink">Kategori</h1>
+        <p className="mt-1 text-sm text-muted">
           Pilih topik yang paling pas buat ceritamu.
         </p>
       </header>
@@ -22,9 +22,9 @@ export default function CategoriesPage() {
           <li key={c.id}>
             <Link
               href={`/feed?category=${c.id}`}
-              className="card card-interactive focus-ring group flex items-start gap-4 p-5"
+              className="card focus-ring flex items-start gap-4 p-5 transition-shadow hover:shadow-lift"
             >
-              <span aria-hidden className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-primary/10 text-xl text-primary transition-colors group-hover:bg-primary/20">
+              <span aria-hidden className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-primary/15 text-xl text-primary">
                 <Icon name={c.icon} className="h-5 w-5" />
               </span>
               <span>

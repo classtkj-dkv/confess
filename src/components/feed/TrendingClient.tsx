@@ -43,10 +43,10 @@ export function TrendingClient() {
     <div className="space-y-5">
       <header className="flex items-end justify-between gap-3">
         <div>
-          <h1 className="page-title flex items-center gap-2">
-            <Icon name="flame" className="h-6 w-6 text-primary" /> Trending
+          <h1 className="flex items-center gap-2 text-xl font-bold text-ink">
+            <Icon name="flame" className="h-5 w-5 text-primary" /> Trending
           </h1>
-          <p className="page-lead mt-1">
+          <p className="mt-0.5 text-sm text-muted">
             Confession paling banyak disukai dalam periode terpilih.
           </p>
         </div>
@@ -57,7 +57,11 @@ export function TrendingClient() {
               type="button"
               aria-pressed={days === p.days}
               onClick={() => setDays(p.days)}
-              className={`chip px-3 py-1.5 text-xs font-semibold`}
+              className={`focus-ring rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                days === p.days
+                  ? "border-primary bg-primary/15 text-primary"
+                  : "border-hairline bg-surface text-muted hover:text-ink"
+              }`}
             >
               {p.label}
             </button>
@@ -79,7 +83,7 @@ export function TrendingClient() {
             <div key={c.id} className="flex gap-3">
               <span
                 aria-hidden
-                className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-gradient-to-br from-primary to-secondary text-sm font-extrabold text-white shadow-glow"
+                className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-primary/15 text-sm font-extrabold text-primary"
               >
                 {i + 1}
               </span>

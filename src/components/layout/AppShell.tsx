@@ -32,7 +32,7 @@ export function AppShell({ children }: AppShellProps) {
     return (
       <main className="grid min-h-dvh place-items-center px-6 text-center">
         <div className="max-w-md space-y-4">
-          <div aria-hidden className="mx-auto grid h-16 w-16 place-items-center rounded-3xl bg-warning/15 text-warning ring-8 ring-warning/5">
+          <div aria-hidden className="mx-auto grid h-16 w-16 place-items-center rounded-3xl bg-warning/15 text-warning">
             <Icon name="wrench" className="h-8 w-8" />
           </div>
           <h1 className="text-2xl font-extrabold text-ink">
@@ -43,7 +43,7 @@ export function AppShell({ children }: AppShellProps) {
             otomatis begitu perawatan selesai — tidak perlu refresh.
           </p>
           {settings.announcement.trim() && (
-            <p className="rounded-2xl border border-hairline bg-surface p-4 text-sm text-ink shadow-soft">
+            <p className="rounded-xl border border-hairline bg-surface p-3 text-sm text-ink">
               <Icon name="megaphone" className="mr-1.5 inline h-4 w-4 align-[-3px]" />
               {settings.announcement.trim()}
             </p>
@@ -57,9 +57,9 @@ export function AppShell({ children }: AppShellProps) {
     <div className="flex min-h-dvh">
       <Sidebar />
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="glass-panel sticky top-0 z-30 border-x-0 border-t-0 border-b border-hairline">
+        <header className="glass-panel sticky top-0 z-30 border-b border-hairline">
           <AnnouncementBanner />
-          <div className="mx-auto flex max-w-5xl items-center gap-3 px-4 py-2.5 md:px-6">
+          <div className="mx-auto flex max-w-5xl items-center gap-3 px-4 py-3">
             <Link
               href="/"
               className="focus-ring rounded-lg md:hidden"
@@ -73,7 +73,7 @@ export function AppShell({ children }: AppShellProps) {
             <div className="ml-auto flex items-center gap-2">
               <Link
                 href="/confess"
-                className="btn-primary hidden !rounded-full !px-5 !py-2 text-xs md:inline-flex"
+                className="btn-primary hidden !py-2 text-xs md:inline-flex"
               >
                 Tulis Confess
               </Link>
@@ -83,7 +83,7 @@ export function AppShell({ children }: AppShellProps) {
               <Link
                 href="/about"
                 aria-label="Tentang CONFESS"
-                className={`focus-ring grid h-9 w-9 place-items-center rounded-full border border-hairline transition-colors ${
+                className={`focus-ring grid h-9 w-9 place-items-center rounded-lg border border-hairline transition-colors ${
                   pathname === "/about"
                     ? "bg-primary/15 text-primary"
                     : "bg-surface text-muted md:hidden"
@@ -98,7 +98,7 @@ export function AppShell({ children }: AppShellProps) {
             </div>
           </div>
         </header>
-        <main className="mx-auto w-full max-w-5xl flex-1 px-4 pb-28 pt-6 md:px-6 md:pb-14 md:pt-8">
+        <main className="mx-auto w-full max-w-5xl flex-1 px-4 pb-28 pt-5 md:pb-12">
           {children}
         </main>
         <MobileNav />

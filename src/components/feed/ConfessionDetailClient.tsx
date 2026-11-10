@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { ConfessionCard } from "@/components/feed/ConfessionCard";
-import { Icon } from "@/components/ui/Icon";
 import { EmptyState, ErrorState } from "@/components/ui/States";
 import { CardSkeleton } from "@/components/ui/Skeletons";
 import { api, ApiClientError } from "@/lib/api";
@@ -164,7 +163,7 @@ export function ConfessionDetailClient() {
                 className="focus-ring rounded px-1 font-semibold hover:text-ink"
                 aria-label="Batal membalas"
               >
-                <Icon name="close" className="h-3.5 w-3.5" />
+                ✕
               </button>
             </div>
           )}

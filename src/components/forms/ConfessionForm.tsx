@@ -32,7 +32,6 @@ export function ConfessionForm({ defaultCategory }: { defaultCategory?: string }
   const [lyric, setLyric] = useState("");
   const [revision, setRevision] = useState("");
   const [sentStatus, setSentStatus] = useState<"PENDING" | "PUBLISHED">("PENDING");
-  const [sentReview, setSentReview] = useState("none");
 
   // Nama pengirim diingat di browser ini supaya tidak perlu diketik ulang.
   useEffect(() => {
@@ -71,7 +70,6 @@ export function ConfessionForm({ defaultCategory }: { defaultCategory?: string }
         },
       });
       setSentStatus(res.status === "PUBLISHED" ? "PUBLISHED" : "PENDING");
-      setSentReview(String(res.review ?? "none"));
       setRevision("");
       try {
         if (fromName.trim()) localStorage.setItem(NAME_KEY, fromName.trim());
@@ -113,13 +111,7 @@ export function ConfessionForm({ defaultCategory }: { defaultCategory?: string }
         <p className="mx-auto mt-2 max-w-md text-sm text-muted">
           {sentStatus === "PUBLISHED"
             ? "Pesanmu lolos pengecekan dan sekarang bisa dilihat semua orang."
-            : sentReview === "user-limit"
-              ? "Batas pengecekan otomatis jam ini sudah terpakai, jadi pesanmu dicek moderator."
-              : sentReview === "full"
-                ? "Kuota persetujuan otomatis jam ini sedang penuh, jadi pesanmu dicek moderator."
-                : sentReview === "manual"
-                  ? "Pesanmu perlu dilihat moderator dulu sebelum tayang."
-                  : "Akan tampil di feed setelah disetujui moderator."}
+            : "Akan tampil di feed setelah disetujui moderator."}
         </p>
         <div className="mt-6 flex flex-wrap justify-center gap-2">
           <button
@@ -178,7 +170,6 @@ export function ConfessionForm({ defaultCategory }: { defaultCategory?: string }
             songLyric: song ? lyric : "",
           }}
         >
-          <Icon name="image" className="h-4 w-4" />
           Atur kartu & unduh
         </CardStudioButton>
         <div className="flex gap-2">
@@ -205,7 +196,7 @@ export function ConfessionForm({ defaultCategory }: { defaultCategory?: string }
 
   return (
     <form
-      className="card space-y-6 p-5 sm:p-7"
+      className="card space-y-5 p-5"
       onSubmit={(e) => {
         e.preventDefault();
         if (!invalid) setStep("preview");
@@ -281,7 +272,11 @@ export function ConfessionForm({ defaultCategory }: { defaultCategory?: string }
               role="radio"
               aria-checked={category === c.id}
               onClick={() => setCategory(c.id)}
-              className={`chip inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold`}
+              className={`focus-ring inline-flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-xs font-semibold transition-colors ${
+                category === c.id
+                  ? "border-primary bg-primary/15 text-primary"
+                  : "border-hairline bg-surface text-muted hover:text-ink"
+              }`}
             >
               <Icon name={c.icon} className="inline h-3.5 w-3.5 align-[-2px]" />
               {c.label}
@@ -293,7 +288,7 @@ export function ConfessionForm({ defaultCategory }: { defaultCategory?: string }
         )}
       </div>
 
-      <label className="flex items-start gap-3 rounded-xl border border-hairline bg-surface/60 p-3.5 text-xs leading-relaxed text-muted">
+      <label className="flex items-start gap-3 rounded-xl bg-surface p-3 text-xs text-muted">
         <input
           type="checkbox"
           checked={agree}

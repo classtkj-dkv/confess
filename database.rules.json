@@ -106,10 +106,6 @@
         ".write": false
       }
     },
-    "sharedTemplates": {
-      ".read": false,
-      ".write": false
-    },
     "rateLimits": {
       ".read": false,
       ".write": false

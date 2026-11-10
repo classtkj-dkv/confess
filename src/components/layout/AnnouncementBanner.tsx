@@ -11,7 +11,7 @@ export function AnnouncementBanner() {
     return (
       <div
         role="status"
-        className="border-b border-warning/20 bg-warning/10 px-4 py-2 text-center text-xs font-semibold text-ink"
+        className="border-b border-hairline bg-warning/15 px-4 py-2 text-center text-xs font-semibold text-ink"
       >
         <Icon name="alert" className="mr-1 inline h-3.5 w-3.5 align-[-2px]" />
         {settings.websiteName} sedang dalam mode perawatan — pengiriman ditutup sementara.
@@ -25,7 +25,7 @@ export function AnnouncementBanner() {
   return (
     <div
       role="status"
-      className="border-b border-primary/20 bg-primary/10 px-4 py-2 text-center text-xs font-medium text-ink"
+      className="border-b border-hairline bg-primary/15 px-4 py-2 text-center text-xs text-ink"
     >
       <Icon name="megaphone" className="mr-1 inline h-3.5 w-3.5 align-[-2px]" />
       {announcement}

@@ -19,7 +19,7 @@ function AnonymousAvatar({ name }: { name?: string }) {
   return (
     <span
       aria-hidden
-      className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-gradient-to-br from-primary/25 to-secondary/25 text-sm font-bold text-primary ring-1 ring-primary/20"
+      className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-primary/15 text-sm font-bold text-primary"
     >
       {(name || "A").trim().charAt(0).toUpperCase()}
     </span>
@@ -93,7 +93,7 @@ function LikeButton({
       className={`focus-ring inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
         liked
           ? "bg-primary/15 text-primary"
-          : "text-muted hover:bg-ink/5 hover:text-ink"
+          : "text-muted hover:bg-white/5 hover:text-ink"
       }`}
     >
       <svg
@@ -116,7 +116,7 @@ function CommentLink({ confession }: { confession: Confession }) {
     <Link
       href={`/confess/${confession.id}`}
       aria-label={`${confession.commentsCount} komentar`}
-      className="focus-ring inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold text-muted transition-colors hover:bg-ink/5 hover:text-ink"
+      className="focus-ring inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold text-muted transition-colors hover:bg-white/5 hover:text-ink"
     >
       <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
         <path d="M21 12a8 8 0 0 1-8 8H5l-2 2V12a8 8 0 0 1 8-8h2a8 8 0 0 1 8 8Z" />
@@ -148,7 +148,7 @@ function ShareButton({ confession }: { confession: Confession }) {
       type="button"
       onClick={share}
       aria-label="Bagikan confession"
-      className="focus-ring inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold text-muted transition-colors hover:bg-ink/5 hover:text-ink"
+      className="focus-ring inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold text-muted transition-colors hover:bg-white/5 hover:text-ink"
     >
       <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
         <path d="M12 3v13m0-13-4 4m4-4 4 4" />
@@ -190,7 +190,7 @@ function ReportButton({ confession }: { confession: Confession }) {
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
         aria-label="Laporkan confession"
-        className="focus-ring inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold text-muted transition-colors hover:bg-ink/5 hover:text-ink"
+        className="focus-ring inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold text-muted transition-colors hover:bg-white/5 hover:text-ink"
       >
         <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
           <path d="M5 21V4m0 0 6 2 3.5-2 4.5 3v8l-3 2-3.5-2-6.5-2" />
@@ -199,7 +199,7 @@ function ReportButton({ confession }: { confession: Confession }) {
       {open && (
         <div
           role="menu"
-          className="glass-panel absolute right-0 bottom-10 z-20 w-60 rounded-2xl border border-hairline bg-card p-2 shadow-lift"
+          className="glass-panel absolute right-0 bottom-10 z-20 w-60 rounded-xl border border-hairline p-2 shadow-lift"
         >
           <p className="px-2 pb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted">
             Alasan laporan
@@ -211,7 +211,7 @@ function ReportButton({ confession }: { confession: Confession }) {
               role="menuitem"
               disabled={busy}
               onClick={() => report(r.id)}
-              className="focus-ring block w-full rounded-lg px-2 py-1.5 text-left text-xs text-ink transition-colors hover:bg-ink/5"
+              className="focus-ring block w-full rounded-lg px-2 py-1.5 text-left text-xs text-ink transition-colors hover:bg-white/5"
             >
               {r.label}
             </button>
@@ -235,11 +235,11 @@ export function ConfessionCard({
   const href = `/confess/${confession.id}`;
 
   return (
-    <article className={`card card-interactive ${compact ? "p-4" : "p-5 sm:p-6"}`}>
+    <article className={`card transition-shadow duration-200 hover:shadow-lift ${compact ? "p-4" : "p-5"}`}>
       <header className="flex items-center gap-3">
         <AnonymousAvatar name={confession.fromName} />
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold text-ink">{confession.fromName || "Anonim"}</p>
+          <p className="truncate text-xs font-semibold text-ink">{confession.fromName || "Anonim"}</p>
           <time dateTime={new Date(confession.createdAt).toISOString()} className="text-[11px] text-muted">
             {formatRelativeTime(confession.createdAt)}
           </time>
@@ -256,7 +256,7 @@ export function ConfessionCard({
             Untuk <span className="font-semibold text-ink">{confession.toName}</span>
           </p>
         )}
-        <p className={`text-[15px] leading-relaxed whitespace-pre-line text-ink/90 ${compact ? "line-clamp-4" : ""}`}>
+        <p className={`text-sm whitespace-pre-line text-ink/90 ${compact ? "line-clamp-4" : ""}`}>
           {confession.message}
         </p>
         {!compact && (
@@ -265,7 +265,7 @@ export function ConfessionCard({
         {confession.song && <SongCard song={confession.song} lyric={confession.songLyric} />}
       </div>
 
-      <footer className="mt-4 flex flex-wrap items-center gap-1 border-t border-hairline pt-3">
+      <footer className="mt-4 flex items-center gap-1 border-t border-hairline pt-3">
         <LikeButton confession={confession} onDone={onLikeChange} />
         <CommentLink confession={confession} />
         <CardStudioButton

@@ -12,20 +12,20 @@ export const metadata: Metadata = {
 
 export default function HomePage() {
   return (
-    <div className="space-y-12">
+    <div className="space-y-10">
       <HeroSection />
 
       <section aria-labelledby="feed-title" className="space-y-4">
         <div className="flex items-end justify-between gap-3">
           <div>
-            <h2 id="feed-title" className="section-title">
+            <h2 id="feed-title" className="text-lg font-bold text-ink">
               Confession terbaru
             </h2>
             <p className="mt-0.5 text-sm text-muted">
               Cerita yang baru saja lolos moderasi.
             </p>
           </div>
-          <Link href="/feed" className="focus-ring rounded-md text-sm font-semibold text-primary underline-offset-4 hover:underline">
+          <Link href="/feed" className="focus-ring rounded-md text-sm font-semibold text-primary">
             Lihat semua →
           </Link>
         </div>
@@ -34,7 +34,7 @@ export default function HomePage() {
 
       <CategoryStrip categories={CATEGORIES} />
 
-      <section className="card flex flex-col items-start gap-4 bg-gradient-to-br from-primary/10 to-secondary/10 p-6 sm:flex-row sm:items-center">
+      <section className="card flex flex-col items-start gap-4 p-6 sm:flex-row sm:items-center">
         <Logo />
         <p className="text-sm text-muted">
           Berbagi cerita secara anonim di lingkungan sekolah. Semua confession

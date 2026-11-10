@@ -8,19 +8,6 @@ export const dynamic = "force-dynamic";
 
 const DEFAULT_PAGE_SIZE = 20;
 
-/** Hanya field lagu yang dibutuhkan pemutar preview. */
-function pickSong(v: unknown): { id: string; title: string; artist: string; cover: string } | null {
-  if (!v || typeof v !== "object") return null;
-  const s = v as Record<string, unknown>;
-  if (typeof s.id !== "string" || !s.id) return null;
-  return {
-    id: s.id,
-    title: String(s.title ?? ""),
-    artist: String(s.artist ?? ""),
-    cover: typeof s.cover === "string" ? s.cover : "",
-  };
-}
-
 /**
  * Daftar confession untuk moderasi. Hanya proyeksi AMAN —
  * authorUid tidak pernah dikirim ke klien.
@@ -68,14 +55,6 @@ export async function GET(req: NextRequest): Promise<Response> {
         status: String(data.status ?? "PENDING"),
         likesCount: Number(data.likesCount ?? 0),
         commentsCount: Number(data.commentsCount ?? 0),
-        fromName: typeof data.fromName === "string" ? data.fromName : "",
-        toName: typeof data.toName === "string" ? data.toName : "",
-        song: pickSong(data.song),
-        songLyric: typeof data.songLyric === "string" ? data.songLyric : "",
-        ai:
-          data.moderation && (data.moderation as Record<string, unknown>).by === "ai"
-            ? String((data.moderation as Record<string, unknown>).verdict ?? "")
-            : "",
       }));
 
     return Response.json({ items, page, pageSize });
