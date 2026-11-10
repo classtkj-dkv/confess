@@ -126,6 +126,8 @@ function fmt(t: number): string {
 interface SyncedLine {
   t: number;
   text: string;
+  /** Jeda musik / instrumental: tampil sebagai ikon nada. */
+  music?: boolean;
 }
 
 const BARS = 24;
@@ -136,24 +138,51 @@ function readSynced(v: unknown): SyncedLine[] {
   const out: SyncedLine[] = [];
   for (const r of v) {
     const o = r as { t?: unknown; text?: unknown };
-    if (typeof o?.t === "number" && typeof o?.text === "string" && o.text) {
-      out.push({ t: o.t, text: o.text });
-    }
+    if (typeof o?.t !== "number") continue;
+    const music = (r as { music?: unknown }).music === true;
+    if (music) out.push({ t: o.t, text: "", music: true });
+    else if (typeof o.text === "string" && o.text) out.push({ t: o.t, text: o.text });
   }
   return out;
 }
 
 const normText = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "");
 
-/** Perkiraan awal: Deezer tidak memberi tahu preview mulai dari detik berapa. */
+/**
+ * Perkiraan awal: Deezer tidak memberi tahu preview mulai dari detik berapa.
+ * Preview 30 dtk umumnya diambil dari tengah lagu, jadi kalau kutipan pengirim
+ * muncul berkali-kali (reff), dipilih kemunculan yang paling dekat ke area itu.
+ */
 function guessOffset(lines: SyncedLine[], quote?: string): number {
-  if (lines.length === 0) return 0;
+  const real = lines.filter((l) => !l.music);
+  if (real.length === 0) return 0;
+  const end = real[real.length - 1].t;
+  const expected = end * 0.33 + 12; // perkiraan titik tengah preview di lagu penuh
   const q = quote ? normText(quote).slice(0, 24) : "";
   if (q.length >= 6) {
-    const hit = lines.find((l) => normText(l.text).includes(q));
-    if (hit) return Math.max(0, hit.t - 6);
+    const hits = real.filter((l) => normText(l.text).includes(q));
+    if (hits.length > 0) {
+      const best = hits.reduce((a, b) => (Math.abs(b.t - expected) < Math.abs(a.t - expected) ? b : a));
+      return Math.max(0, best.t - 6);
+    }
   }
-  return lines[lines.length - 1].t * 0.33;
+  return end * 0.33;
+}
+
+/** Ikon nada (pengganti emoji 🎵) — berdenyut halus saat bagian musik sedang jalan. */
+function MusicNote({ active }: { active: boolean }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      aria-hidden
+      className={`mx-auto transition-all duration-300 ${
+        active ? "h-6 w-6 scale-110 animate-pulse text-white" : "h-4 w-4 text-white/30"
+      }`}
+      fill="currentColor"
+    >
+      <path d="M9 3.5v11.1A3.5 3.5 0 1 0 11 17.75V8.2l8-1.6v6.4A3.5 3.5 0 1 0 21 16.2V2.5L9 3.5Z" />
+    </svg>
+  );
 }
 
 const offsetKey = (id: string) => `confess:lyric-offset:${id}`;
@@ -397,6 +426,16 @@ function SongModal({
     }
   }
 
+  function resetSync() {
+    try {
+      localStorage.removeItem(offsetKey(song.id));
+    } catch {
+      /* abaikan */
+    }
+    setCalibrated(false);
+    setOffset(guessOffset(synced, lyric));
+  }
+
   const pct = duration > 0 ? Math.min(100, (time / duration) * 100) : 0;
   const hasSynced = synced.length > 0;
 
@@ -580,13 +619,18 @@ function SongModal({
                   }}
                   type="button"
                   onClick={() => syncTo(i)}
-                  className={`block w-full px-1 py-1 text-center leading-snug transition-all duration-300 ${
-                    i === active
-                      ? "text-base font-bold text-white"
-                      : "text-sm font-medium text-white/35 hover:text-white/60"
+                  aria-label={l.music ? "Bagian musik" : undefined}
+                  className={`block w-full px-1 text-center leading-snug transition-all duration-300 ${
+                    l.music ? "py-2" : "py-1"
+                  } ${
+                    l.music
+                      ? ""
+                      : i === active
+                        ? "text-base font-bold text-white"
+                        : "text-sm font-medium text-white/35 hover:text-white/60"
                   }`}
                 >
-                  {l.text}
+                  {l.music ? <MusicNote active={i === active} /> : l.text}
                 </button>
               ))}
             </div>
@@ -594,6 +638,14 @@ function SongModal({
               {calibrated
                 ? "Lirik sudah disesuaikan. Ketuk baris lain untuk mengatur ulang."
                 : "Lirik belum pas? Ketuk baris yang sedang dinyanyikan."}
+              {calibrated && (
+                <>
+                  {" "}
+                  <button type="button" onClick={resetSync} className="underline underline-offset-2 hover:text-white/70">
+                    Reset
+                  </button>
+                </>
+              )}
             </p>
           </div>
         ) : (

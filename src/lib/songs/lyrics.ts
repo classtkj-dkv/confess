@@ -9,7 +9,10 @@ const UA = "CONFESS-school-app (https://github.com/)";
 export interface SyncedLine {
   /** Detik posisi baris di lagu penuh. */
   t: number;
+  /** Teks lirik; kosong kalau ini jeda musik. */
   text: string;
+  /** true = bagian musik/instrumental (ditampilkan sebagai ikon nada, bukan teks). */
+  music?: boolean;
 }
 
 export interface LyricSuggestion {
@@ -77,11 +80,44 @@ function pickSuggestion(raw: string, lines: string[]): string {
   return best || lines[0] || "";
 }
 
+/** Penanda instrumental yang sering ditulis kontributor LRCLIB. */
+const MUSIC_TAG = /^[\s♪♫🎵🎶*#~\-–—_.…]*(?:[\[(]?\s*(?:instrumental|instru|music|musik|intro|outro|interlude|solo|bridge)\s*[\])]?)?[\s♪♫🎵🎶*#~\-–—_.…]*$/i;
+
+function isMusicText(text: string): boolean {
+  return !text || MUSIC_TAG.test(text);
+}
+
+/**
+ * Baris kosong / "♪" / "[Instrumental]" => jeda musik. Selain itu, celah panjang
+ * antar-baris (intro, interlude, outro) otomatis diberi penanda musik juga,
+ * seperti di Spotify. Baris yang diulang tetap disimpan semuanya (tiap kemunculan
+ * punya waktunya sendiri).
+ */
+function withMusicGaps(rows: SyncedLine[]): SyncedLine[] {
+  const out: SyncedLine[] = [];
+  const push = (r: SyncedLine) => {
+    const prev = out[out.length - 1];
+    if (r.music && prev?.music) return; // jangan menumpuk dua penanda musik
+    out.push(r);
+  };
+  if (rows.length > 0 && !rows[0].music && rows[0].t >= 5) push({ t: 0, text: "", music: true });
+  for (let i = 0; i < rows.length; i++) {
+    const cur = rows[i];
+    push(cur);
+    const next = rows[i + 1];
+    if (!next || cur.music || next.music) continue;
+    // perkiraan lamanya satu baris dinyanyikan: ~0.08 dtk per huruf, 2.5–7 dtk
+    const sung = Math.min(7, Math.max(2.5, cur.text.length * 0.08 + 1.2));
+    if (next.t - cur.t - sung >= 5) push({ t: Math.round((cur.t + sung) * 100) / 100, text: "", music: true });
+  }
+  return out;
+}
+
 function syncedOf(v: unknown): SyncedLine[] {
   if (!v || typeof v !== "object") return [];
   const raw = (v as Record<string, unknown>).syncedLyrics;
   if (typeof raw !== "string") return [];
-  const out: SyncedLine[] = [];
+  const rows: SyncedLine[] = [];
   for (const row of raw.split(/\r?\n/)) {
     const re = /\[(\d{1,3}):(\d{1,2}(?:[.:]\d{1,3})?)\]/g;
     const stamps: number[] = [];
@@ -90,12 +126,19 @@ function syncedOf(v: unknown): SyncedLine[] {
       const t = Number(m[1]) * 60 + Number(m[2].replace(":", "."));
       if (Number.isFinite(t)) stamps.push(Math.round(t * 100) / 100);
     }
-    if (stamps.length === 0) continue;
-    const text = row.replace(/\[[^\]]*\]/g, "").replace(/\s+/g, " ").trim();
-    if (!text || text.length > 160) continue;
-    for (const t of stamps) out.push({ t, text });
+    if (stamps.length === 0) continue; // metadata seperti [ar:...] / [ti:...] ikut terbuang
+    const text = row
+      .replace(/\[[^\]]*\]/g, "") // penanda waktu
+      .replace(/<[^>]*>/g, "") // penanda per-kata (format enhanced)
+      .replace(/\s+/g, " ")
+      .trim();
+    if (text.length > 160) continue;
+    const music = isMusicText(text);
+    // satu baris dengan banyak timestamp = lirik yang diulang; semuanya dipakai
+    for (const t of stamps) rows.push(music ? { t, text: "", music: true } : { t, text });
   }
-  return out.sort((a, b) => a.t - b.t).slice(0, 300);
+  rows.sort((a, b) => a.t - b.t);
+  return withMusicGaps(rows).slice(0, 400);
 }
 
 function norm(s: unknown): string {
