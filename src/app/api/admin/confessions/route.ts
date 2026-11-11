@@ -72,6 +72,8 @@ export async function GET(req: NextRequest): Promise<Response> {
         toName: typeof data.toName === "string" ? data.toName : "",
         song: pickSong(data.song),
         songLyric: typeof data.songLyric === "string" ? data.songLyric : "",
+        // Catatan jaringan untuk anti-spam (staff-only endpoint).
+        ip: typeof data.ip === "string" ? data.ip : "",
         ai:
           data.moderation && (data.moderation as Record<string, unknown>).by === "ai"
             ? String((data.moderation as Record<string, unknown>).verdict ?? "")

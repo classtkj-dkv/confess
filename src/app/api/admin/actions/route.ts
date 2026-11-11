@@ -14,6 +14,7 @@ import {
   publicConfessionOf,
 } from "@/lib/firebase/publicData";
 import { touchAdmin, writeAudit } from "@/lib/security/audit";
+import { ipKey, setIpBlocked } from "@/lib/security/ipWatch";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -29,7 +30,9 @@ type AdminAction =
   | "blockUser"
   | "unblockUser"
   | "resolveReport"
-  | "dismissReport";
+  | "dismissReport"
+  | "blockIp"
+  | "unblockIp";
 
 interface ActionBody {
   type: AdminAction;
@@ -48,10 +51,18 @@ const allowedActions: readonly AdminAction[] = [
   "unblockUser",
   "resolveReport",
   "dismissReport",
+  "blockIp",
+  "unblockIp",
 ];
 
 /** Aksi yang hanya boleh admin/owner (bukan moderator). */
-const ADMIN_ONLY: readonly AdminAction[] = ["blockUser", "unblockUser", "deleteConfession"];
+const ADMIN_ONLY: readonly AdminAction[] = [
+  "blockUser",
+  "unblockUser",
+  "deleteConfession",
+  "blockIp",
+  "unblockIp",
+];
 
 export async function POST(req: NextRequest): Promise<Response> {
   try {
@@ -202,6 +213,19 @@ export async function POST(req: NextRequest): Promise<Response> {
           updatedAt: now,
         });
         message = blocked ? "Akun diblokir." : "Blokir dilepas.";
+        break;
+      }
+      case "blockIp":
+      case "unblockIp": {
+        // body.id = kunci hash IP (dipilih dari daftar IP di admin panel).
+        if (!/^[a-f0-9]{40}$/.test(body.id)) {
+          return Response.json({ error: "Kunci IP tidak valid." }, { status: 400 });
+        }
+        const ipSnap = await db.ref(`ip_logs/${body.id}/ip`).get();
+        const ip = String(ipSnap.val() ?? "");
+        if (!ip) throw new ApiError(404, "Catatan IP tidak ditemukan.");
+        await setIpBlocked(ip, body.type === "blockIp", actor.uid);
+        message = body.type === "blockIp" ? "IP diblokir." : "Blokir IP dilepas.";
         break;
       }
     }

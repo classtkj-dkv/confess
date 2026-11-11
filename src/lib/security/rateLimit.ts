@@ -60,11 +60,7 @@ export async function peekRateLimit(cfg: RateLimitConfig): Promise<boolean> {
 export const RATE_LIMITS = {
   confessionPerDay: { limit: 5, windowMs: 24 * 60 * 60 * 1000 },
   commentPerHour: { limit: 10, windowMs: 60 * 60 * 1000 },
-  /** Cek AI per pengguna (mencegah user menghabiskan kuota AI). */
-  aiCheckPerHour: { limit: 4, windowMs: 60 * 60 * 1000 },
   songSearch: { limit: 60, windowMs: 10 * 60 * 1000 },
-  /** Pemanggilan AI perapian lirik per pengguna (biaya OpenRouter). */
-  songLyricAi: { limit: 30, windowMs: 10 * 60 * 1000 },
   reportPerDay: { limit: 10, windowMs: 24 * 60 * 60 * 1000 },
   templateShare: { limit: 15, windowMs: 24 * 60 * 60 * 1000 },
   templateOpen: { limit: 40, windowMs: 60 * 60 * 1000 },

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Icon } from "@/components/ui/Icon";
 import { api, ApiClientError } from "@/lib/api";
 import { useSettings } from "@/lib/firebase/useSettings";
@@ -14,6 +14,16 @@ interface AiRow {
   text: string;
   music?: boolean;
 }
+
+/** Hasil pemeriksaan keamanan lagu dari server (Deezer eksplisit + lirik + AI). */
+interface SongSafetyInfo {
+  verdict: "aman" | "ragu" | "bahaya";
+  reason: string;
+  explicit: boolean;
+}
+
+const UNSAFE_MSG =
+  "Lagu ini tidak aman untuk dipakai (ada kandungan yang tidak pantas). Pilih lagu lain ya.";
 
 export function SongPicker({
   song,
@@ -37,9 +47,9 @@ export function SongPicker({
   const [aiState, setAiState] = useState<"idle" | "loading" | "ready" | "skip">("idle");
   const [aiOffset, setAiOffset] = useState<number | null>(null);
   const [aiSynced, setAiSynced] = useState<AiRow[]>([]);
+  const [safety, setSafety] = useState<SongSafetyInfo | null>(null);
   const [testing, setTesting] = useState(false);
   const [ctx, setCtx] = useState<AudioContext | null>(null);
-  const autoFilled = useRef<string | null>(null);
 
   useEffect(() => {
     const term = q.trim();
@@ -79,6 +89,7 @@ export function SongPicker({
       setAiState("idle");
       setAiOffset(null);
       setAiSynced([]);
+      setSafety(null);
       return;
     }
     let cancelled = false;
@@ -89,11 +100,6 @@ export function SongPicker({
         const found = Array.isArray(d.lines) ? (d.lines as string[]) : [];
         setLines(found);
         setLyricState(found.length > 0 ? "ready" : "none");
-        const suggestion = String(d.suggestion ?? "");
-        if (suggestion && autoFilled.current !== song.id && !lyric.trim()) {
-          autoFilled.current = song.id;
-          onLyric(suggestion.slice(0, LYRIC_MAX));
-        }
       })
       .catch(() => {
         if (!cancelled) setLyricState("none");
@@ -104,8 +110,10 @@ export function SongPicker({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [song?.id]);
 
-  // Panggilan kedua: AI (OpenRouter, key 2–3 berotasi) merapikan & menyusun lirik
-  // serta menatap di detik berapa preview musik mulai — lihat "Tes putar".
+  // Panggilan kedua: AI musik (OpenRouter, hingga 5 key berotasi) memeriksa
+  // keamanan lagu, merapikan & menyusun lirik serta menatap di detik berapa
+  // preview musik mulai — lihat "Tes putar". Lirik TIDAK diisi otomatis:
+  // pengirim memilih barisnya sendiri lewat mode "lirik susun".
   useEffect(() => {
     if (!song) return;
     let cancelled = false;
@@ -116,6 +124,9 @@ export function SongPicker({
     })
       .then((d) => {
         if (cancelled) return;
+        if (d.safety && typeof d.safety === "object") {
+          setSafety(d.safety as SongSafetyInfo);
+        }
         if (d.skipped || typeof d.offset !== "number") {
           setAiState("skip");
           return;
@@ -200,24 +211,32 @@ export function SongPicker({
           onChange={(e) => onLyric(e.target.value)}
           maxLength={LYRIC_MAX}
           rows={2}
-          placeholder="Kutipan lirik (opsional)"
-          aria-label="Kutipan lirik (opsional)"
+          placeholder="Lirik (opsional) — pilih dari lirik susun atau ketik sendiri"
+          aria-label="Lirik (opsional)"
           className="input resize-y"
         />
         <div className="flex items-center justify-between gap-2 text-[11px] text-muted">
           <span>
             {lyricState === "loading"
-              ? "Mencari lirik otomatis…"
+              ? "Menyiapkan lirik susun…"
               : aiState === "loading"
-                ? "AI merapikan lirik dan menyelaraskan musik…"
+                ? "AI memeriksa keamanan lagu dan menyelaraskan musik…"
                 : lyricState === "ready"
                   ? aiState === "ready"
-                    ? "Lirik dirapikan & diselaraskan AI (tes di tombol putar) — ketuk baris untuk memilih, lalu lanjut isi form."
-                    : "Lirik ditemukan — ketuk baris untuk memilih (maks. 200 huruf)."
-                  : "Lirik tidak ditemukan. Kamu bisa mengetik kutipan sendiri."}
+                    ? "Lirik susun siap & diselaraskan AI (tes di tombol putar) — ketuk baris untuk memilih."
+                    : "Lirik susun siap — ketuk baris untuk memilih (maks. 200 huruf)."
+                  : "Tidak ada lirik tersedia. Kamu bisa mengetik kutipan sendiri atau lanjut tanpa lirik."}
           </span>
           <span className="tabular-nums">{lyric.length}/{LYRIC_MAX}</span>
         </div>
+        {safety?.verdict === "bahaya" && (
+          <p
+            role="alert"
+            className="rounded-xl border border-danger/40 bg-danger/10 px-3 py-2 text-xs font-semibold text-danger"
+          >
+            {safety.reason ? `Lagu tidak aman: ${safety.reason}` : UNSAFE_MSG}
+          </p>
+        )}
         {lyricState === "ready" && (
           <ul className="max-h-44 space-y-1 overflow-y-auto rounded-xl border border-hairline bg-surface/60 p-1.5">
             {lines.map((l) => {

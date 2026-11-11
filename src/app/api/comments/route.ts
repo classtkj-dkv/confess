@@ -12,6 +12,7 @@ import { validateCommentInput } from "@/lib/validations";
 import { getAdminSettings } from "@/lib/firebase/settings";
 import { publicCommentOf } from "@/lib/firebase/publicData";
 import { touchAdmin, writeActivity } from "@/lib/security/audit";
+import { enforceIp } from "@/lib/security/ipWatch";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -20,6 +21,9 @@ export async function POST(req: NextRequest): Promise<Response> {
   try {
     const uid = await requireUid(req);
     await assertNotBlocked(uid);
+
+    // Anti-spam per jaringan: IP diblokir/dibanjir langsung ditolak.
+    const ipWatch = await enforceIp(req, uid, "comment");
 
     let raw: unknown;
     try {
@@ -82,6 +86,8 @@ export async function POST(req: NextRequest): Promise<Response> {
       message: clean,
       ...(fromName ? { fromName } : {}),
       ...(rootId ? { parentId: rootId, replyToName } : {}),
+      // Catatan jaringan (privat, hanya staff): tampil di admin panel.
+      ...(ipWatch.ip ? { ip: ipWatch.ip } : {}),
       createdAt: Date.now(),
       status: "VISIBLE",
     };
@@ -93,7 +99,10 @@ export async function POST(req: NextRequest): Promise<Response> {
       [`public/confessions/${confessionId}/commentsCount`]: ServerValue.increment(1),
     });
     await touchAdmin();
-    await writeActivity(uid, "comment_created", commentId, { confessionId });
+    await writeActivity(uid, "comment_created", commentId, {
+      confessionId,
+      ...(ipWatch.ip ? { ip: ipWatch.ip } : {}),
+    });
 
     return Response.json(
       { ok: true, id: commentId, status: "VISIBLE" },

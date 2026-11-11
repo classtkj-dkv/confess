@@ -102,6 +102,28 @@ export async function GET(req: NextRequest): Promise<Response> {
       return Response.json({ items, page, pageSize });
     }
 
+    if (resource === "ips") {
+      await requireAdmin(req);
+      const snap = await getAdminRtdb().ref("ip_logs").get();
+      const all = Object.entries(
+        (snap.val() ?? {}) as Record<string, Record<string, unknown>>
+      ).map(([key, d]) => ({
+        id: key,
+        ip: String(d?.ip ?? ""),
+        firstSeen: typeof d?.firstSeen === "number" ? d.firstSeen : 0,
+        lastSeen: typeof d?.lastSeen === "number" ? d.lastSeen : 0,
+        confessions: Number(d?.confessions ?? 0),
+        comments: Number(d?.comments ?? 0),
+        blocked: d?.blocked === true,
+        flagged: d?.flagged === true,
+        uidCount: d?.uids && typeof d.uids === "object" ? Object.keys(d.uids).length : 0,
+      }));
+      const items = all
+        .sort((x, y) => y.lastSeen - x.lastSeen)
+        .slice((page - 1) * pageSize, page * pageSize);
+      return Response.json({ items, page, pageSize });
+    }
+
     if (resource === "audit") {
       await requireAdmin(req);
       const source = url.searchParams.get("source") === "activity" ? "activity_logs" : "audit_logs";

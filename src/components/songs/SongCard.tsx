@@ -101,7 +101,7 @@ function Equalizer({
   className?: string;
 }) {
   return (
-    <span aria-hidden className={`items-end gap-[3px] ${className || "flex"} ${className.includes("flex") ? "" : "flex"}`}>
+    <span aria-hidden className={className.includes("flex") ? className : `flex items-end gap-[3px] ${className}`}>
       {Array.from({ length: bars }).map((_, i) => (
         <span
           key={i}

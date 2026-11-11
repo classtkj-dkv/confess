@@ -8,11 +8,11 @@
  * menabrak. Nama variabel environment per tugas = prefiks + akhiran:
  *
  * Moderasi (prefiks OPENROUTER, tetap kompatibel dengan versi lama):
- *   OPENROUTER_API_KEYS="sk-1,sk-2,sk-3" / OPENROUTER_API_KEY_1..3 / OPENROUTER_API_KEY
+ *   OPENROUTER_API_KEYS="sk-1,...,sk-5" / OPENROUTER_API_KEY_1..5 / OPENROUTER_API_KEY
  *   OPENROUTER_MODEL / OPENROUTER_FALLBACK_MODELS
  *
  * Musik (prefiks MUSIC_AI):
- *   MUSIC_AI_API_KEYS="sk-1,sk-2,sk-3" / MUSIC_AI_API_KEY_1..3 / MUSIC_AI_API_KEY
+ *   MUSIC_AI_API_KEYS="sk-1,...,sk-5" / MUSIC_AI_API_KEY_1..5 / MUSIC_AI_API_KEY
  *   MUSIC_AI_MODEL / MUSIC_AI_FALLBACK_MODELS
  */
 const ENDPOINT = "https://openrouter.ai/api/v1/chat/completions";
@@ -57,9 +57,9 @@ function readKeys(setup: AiRoleSetup): string[] {
     }
   };
   add(process.env[`${setup.env}_API_KEYS`]);
-  for (const i of [1, 2, 3]) add(process.env[`${setup.env}_API_KEY_${i}`]);
+  for (const i of [1, 2, 3, 4, 5]) add(process.env[`${setup.env}_API_KEY_${i}`]);
   add(process.env[`${setup.env}_API_KEY`]);
-  return out.slice(0, 3);
+  return out.slice(0, 5);
 }
 
 export interface AiRoleConfig {

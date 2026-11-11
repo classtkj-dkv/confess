@@ -246,7 +246,8 @@ main > * {
 }
 
 .vinyl-disc {
-  animation: vinyl-spin 6s linear infinite;
+  /* 1 putaran per 18 detik: terlihat berputar, tapi tidak pusing/kencang. */
+  animation: vinyl-spin 18s linear infinite;
 }
 
 .eq-bar {

@@ -8,7 +8,9 @@ import {
   requireUid,
 } from "@/lib/security/apiHelpers";
 import { checkRateLimit, peekRateLimit, RATE_LIMITS } from "@/lib/security/rateLimit";
-import { aiApprovalsPerHour, isAiConfigured, moderateWithAI } from "@/lib/ai/moderate";
+import { isAiConfigured, moderateWithAI } from "@/lib/ai/moderate";
+import { checkSongSafety } from "@/lib/ai/songcheck";
+import { enforceIp } from "@/lib/security/ipWatch";
 import { publicConfessionOf } from "@/lib/firebase/publicData";
 import { isCategoryId } from "@/lib/categories";
 import { sanitizeText } from "@/lib/security/sanitize";
@@ -27,6 +29,10 @@ export async function POST(req: NextRequest): Promise<Response> {
   try {
     const uid = await requireUid(req);
     await assertNotBlocked(uid);
+
+    // Anti-spam per jaringan: IP diblokir/dibanjir langsung ditolak sebelum
+    // menyentuh database; aktivitas IP tercatat untuk admin panel.
+    const ipWatch = await enforceIp(req, uid, "confession");
 
     const settings = await getAdminSettings();
     if (settings.maintenanceMode) {
@@ -79,6 +85,21 @@ export async function POST(req: NextRequest): Promise<Response> {
       if (!settings.allowSongs) throw new ApiError(403, "Fitur lagu sedang dinonaktifkan.");
       const track = await getTrack(songId);
       if (!track) throw new ApiError(400, "Lagu tidak ditemukan. Pilih lagu lain.");
+      // Pemeriksaan keamanan lagu (Deezer eksplisit + lirik lintas platform + AI).
+      const safety = await checkSongSafety({
+        id: track.id,
+        title: track.title,
+        artist: track.artist,
+        lyric: songLyric,
+        explicit: track.explicit,
+      });
+      if (safety.verdict === "bahaya") {
+        throw new ApiError(
+          422,
+          `Lagu ini tidak boleh dipakai: ${safety.reason || "kandungan lagunya tidak pantas untuk komunitas sekolah."}`,
+          "song-unsafe"
+        );
+      }
       song = { id: track.id, title: track.title, artist: track.artist, cover: track.cover };
     }
 
@@ -119,52 +140,32 @@ export async function POST(req: NextRequest): Promise<Response> {
     // Cek dulu tanpa mengurangi kuota: yang sudah habis tidak boleh memakai AI.
     if (!(await peekRateLimit(dailyCfg))) throw dailyError;
 
-    // ── Moderasi AI (opsional). Gagal/penuh → otomatis moderasi manual. ──
+    // ── Moderasi AI (opsional, TANPA batas kuota tambahan). ──
+    // Satu-satunya batas adalah limit API key OpenRouter itu sendiri: bila
+    // semua key kena limit/gagal → otomatis moderasi manual seperti biasa.
     let status: "PENDING" | "PUBLISHED" = "PENDING";
     let moderation: Record<string, unknown> | null = null;
-    // Catatan hasil untuk pengirim: none | approved | manual | user-limit | full | error
+    // Catatan hasil untuk pengirim: none | approved | manual | error
     let review = "none";
     if (settings.aiModeration && isAiConfigured()) {
       review = "error";
-      const aiCheck = await checkRateLimit({
-        scope: "aicheck",
-        uid,
-        limit: RATE_LIMITS.aiCheckPerHour.limit,
-        windowMs: RATE_LIMITS.aiCheckPerHour.windowMs,
+      const ai = await moderateWithAI({
+        message,
+        fromName,
+        toName,
+        songLabel: song ? `${song.title} - ${song.artist}` : "",
+        lyric: song ? songLyric : "",
       });
-      const approveCfg = {
-        scope: "aiapprove",
-        uid: "global",
-        limit: aiApprovalsPerHour(),
-        windowMs: 60 * 60 * 1000,
-      };
-      if (!aiCheck.allowed) review = "user-limit";
-      else if (!(await peekRateLimit(approveCfg))) review = "full";
-      if (aiCheck.allowed && (await peekRateLimit(approveCfg))) {
-        const ai = await moderateWithAI({
-          message,
-          fromName,
-          toName,
-          songLabel: song ? `${song.title} - ${song.artist}` : "",
-          lyric: song ? songLyric : "",
-        });
-        if (ai?.verdict === "revise") {
-          throw new ApiError(422, ai.feedback, "needs-revision");
-        }
-        if (ai?.verdict === "approve") {
-          // Kuota persetujuan AI global (per jam) baru dikurangi saat benar-benar menyetujui.
-          const slot = await checkRateLimit(approveCfg);
-          if (slot.allowed) {
-            status = "PUBLISHED";
-            review = "approved";
-            moderation = { by: "ai", verdict: "approve", model: ai.model, at: Date.now() };
-          } else {
-            review = "full";
-          }
-        } else if (ai) {
-          review = "manual";
-          moderation = { by: "ai", verdict: "manual", model: ai.model, at: Date.now() };
-        }
+      if (ai?.verdict === "revise") {
+        throw new ApiError(422, ai.feedback, "needs-revision");
+      }
+      if (ai?.verdict === "approve") {
+        status = "PUBLISHED";
+        review = "approved";
+        moderation = { by: "ai", verdict: "approve", model: ai.model, at: Date.now() };
+      } else if (ai) {
+        review = "manual";
+        moderation = { by: "ai", verdict: "manual", model: ai.model, at: Date.now() };
       }
     }
 
@@ -191,6 +192,8 @@ export async function POST(req: NextRequest): Promise<Response> {
       ...(song ? { song, ...(songLyric ? { songLyric } : {}) } : {}),
       ...(moderation ? { moderation } : {}),
       authorUid: uid,
+      // Catatan jaringan (privat, hanya staff): tampil di admin panel.
+      ...(ipWatch.ip ? { ip: ipWatch.ip } : {}),
       createdAt: now,
       updatedAt: now,
       status,
@@ -210,6 +213,7 @@ export async function POST(req: NextRequest): Promise<Response> {
       category,
       status,
       ai: moderation ? String(moderation.verdict) : "none",
+      ...(ipWatch.ip ? { ip: ipWatch.ip } : {}),
     });
 
     return Response.json(

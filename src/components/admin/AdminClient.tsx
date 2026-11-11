@@ -24,6 +24,7 @@ type Tab =
   | "comments"
   | "reports"
   | "users"
+  | "ips"
   | "categories"
   | "announcements"
   | "settings"
@@ -36,6 +37,7 @@ const TABS: readonly { id: Tab; label: string; icon: IconName }[] = [
   { id: "comments", label: "Comments", icon: "message" },
   { id: "reports", label: "Reports", icon: "flag" },
   { id: "users", label: "Users", icon: "users" },
+  { id: "ips", label: "IP Log", icon: "globe" },
   { id: "categories", label: "Categories", icon: "grid" },
   { id: "announcements", label: "Announcements", icon: "megaphone" },
   { id: "settings", label: "Settings", icon: "sliders" },
@@ -76,6 +78,7 @@ interface AdminConfessionRow {
   toName?: string;
   song?: Song | null;
   songLyric?: string;
+  ip?: string;
 }
 
 interface AdminCommentRow {
@@ -103,15 +106,16 @@ interface AdminUserRow {
   createdAt: number;
 }
 
-interface AdminStatsShape {
-  totalConfessions: number;
-  pendingConfessions: number;
-  publishedConfessions: number;
-  rejectedConfessions: number;
-  totalComments: number;
-  openReports: number;
-  totalUsers: number;
-  last7DaysConfessions: number;
+interface AdminIpRow {
+  id: string;
+  ip: string;
+  firstSeen: number;
+  lastSeen: number;
+  confessions: number;
+  comments: number;
+  blocked: boolean;
+  flagged: boolean;
+  uidCount: number;
 }
 
 export function AdminClient() {
@@ -301,6 +305,8 @@ function AdminSection({
       return <ReportRows key={tick} onAction={onAction} />;
     case "users":
       return <UserRows key={tick} onAction={onAction} role={role} />;
+    case "ips":
+      return <IpRows key={tick} onAction={onAction} />;
     case "categories":
       return <CategoriesView />;
     case "announcements":
@@ -457,6 +463,11 @@ function ConfessionRows({
                 {r.ai && (
                   <span className="badge">
                     AI: {r.ai === "approve" ? "menyetujui" : "serahkan ke moderator"}
+                  </span>
+                )}
+                {r.ip && (
+                  <span className="badge font-mono" title="IP pengirim">
+                    IP: {r.ip}
                   </span>
                 )}
                 <span className="ml-auto text-[11px] text-muted">
@@ -915,6 +926,121 @@ function UserRows({
   );
 }
 
+/* ---------------- IP log (anti-spam) ---------------- */
+
+function IpRows({
+  onAction,
+}: {
+  onAction: (type: string, id: string) => Promise<void>;
+}) {
+  const [rows, setRows] = useState<AdminIpRow[] | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [onlyFlagged, setOnlyFlagged] = useState(false);
+  const [search, setSearch] = useState("");
+
+  const refresh = useCallback(async () => {
+    setRows(null);
+    const data = (await api("/api/admin/listings?type=ips")) as { items: AdminIpRow[] };
+    setRows(data.items ?? []);
+  }, []);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  async function act(type: string, id: string) {
+    setBusy(id);
+    await onAction(type, id);
+    setBusy(null);
+    void refresh();
+  }
+
+  const filtered = useMemo(() => {
+    if (!rows) return null;
+    const list = onlyFlagged ? rows.filter((r) => r.flagged || r.blocked) : rows;
+    const q = search.trim();
+    return q ? list.filter((r) => r.ip.includes(q)) : list;
+  }, [rows, onlyFlagged, search]);
+
+  return (
+    <section className="space-y-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <h2 className="section-title">Catatan IP</h2>
+        <span className="badge">blokir IP hanya admin/owner</span>
+        <label className="ml-auto flex items-center gap-2 text-xs text-muted">
+          <input
+            type="checkbox"
+            checked={onlyFlagged}
+            onChange={(e) => setOnlyFlagged(e.target.checked)}
+            className="h-4 w-4 accent-primary"
+          />
+          Hanya mencurigakan / diblokir
+        </label>
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Cari IP…"
+          maxLength={45}
+          className="input !w-40 !py-1.5 text-xs"
+          aria-label="Cari alamat IP"
+        />
+      </div>
+      <p className="text-xs text-muted">
+        Setiap kiriman confession & komentar mencatat IP jaringannya. Satu IP yang
+        dipakai banyak akun berbeda otomatis ditandai mencurigakan; IP yang diblokir
+        tidak bisa mengirim apa pun dari jaringan itu.
+      </p>
+
+      {filtered === null ? (
+        <div className="space-y-3">{Array.from({ length: 3 }).map((_, i) => <StatSkeleton key={i} />)}</div>
+      ) : filtered.length === 0 ? (
+        <EmptyState icon="globe" title="Belum ada catatan IP" />
+      ) : (
+        filtered.map((n) => (
+          <div key={n.id} className="card flex flex-wrap items-center gap-3 p-4">
+            <span className="font-mono text-sm font-semibold text-ink">{n.ip || "?"}</span>
+            {n.flagged && <span className="badge text-warning">MENCURIGAKAN</span>}
+            <span className={`badge ${n.blocked ? "text-danger" : "text-success"}`}>
+              {n.blocked ? "DIBLOKIR" : "NORMAL"}
+            </span>
+            <span className="text-xs text-muted">
+              {n.uidCount} akun · {n.confessions} confession · {n.comments} komentar
+            </span>
+            <span className="ml-auto text-[11px] text-muted">
+              terakhir: {formatDateTime(n.lastSeen)}
+            </span>
+            <div className="flex gap-2">
+              {n.blocked ? (
+                <button
+                  type="button"
+                  disabled={busy === n.id}
+                  onClick={() => act("unblockIp", n.id)}
+                  className="btn-ghost !py-1.5 text-xs"
+                >
+                  Lepas blokir
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  disabled={busy === n.id}
+                  onClick={() => {
+                    if (window.confirm(`Blokir IP ${n.ip} dari mengirim konten?`)) {
+                      void act("blockIp", n.id);
+                    }
+                  }}
+                  className="btn-danger !py-1.5 text-xs"
+                >
+                  Blokir IP
+                </button>
+              )}
+            </div>
+          </div>
+        ))
+      )}
+    </section>
+  );
+}
+
 /* ---------------- Categories ---------------- */
 
 function CategoriesView() {
@@ -1029,7 +1155,7 @@ function AnnouncementBase({
       if (!d.configured) {
         lines.push({
           ok: false,
-          text: "API key AI moderasi belum terisi. Isi OPENROUTER_API_KEYS (atau OPENROUTER_API_KEY_1 s.d. _3) di environment Vercel.",
+          text: "API key AI moderasi belum terisi. Isi OPENROUTER_API_KEYS (atau OPENROUTER_API_KEY_1 s.d. _5) di environment Vercel.",
         });
       } else {
         lines.push({ ok: true, text: `AI moderasi — model ${d.model}, key aktif: ${d.keys ?? 1}` });
@@ -1132,8 +1258,9 @@ function AnnouncementBase({
             <div>
               <p className="font-semibold text-ink">Moderasi AI</p>
               <p className="mt-0.5 text-xs text-muted">
-                AI menyetujui confession yang sopan (maks 10 per jam), meminta revisi bila kurang
-                pas, dan menyerahkan kasus sensitif ke moderator.
+                AI menyetujui confession yang sopan tanpa batas kuota (batasnya hanya
+                limit API key OpenRouter), meminta revisi bila kurang pas, dan
+                menyerahkan kasus sensitif ke moderator.
               </p>
             </div>
             <ToggleSwitch

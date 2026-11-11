@@ -16,6 +16,8 @@ export interface SongPreview extends SongInfo {
   link: string;
   /** Lama lagu penuh dalam detik (untuk penempatan lirik pada preview 30 dtk). */
   duration: number;
+  /** Penanda lagu eksplisit dari Deezer (mature content). */
+  explicit: boolean;
 }
 
 const API = "https://api.deezer.com";
@@ -50,6 +52,7 @@ function mapTrack(t: Record<string, unknown> | null | undefined): SongPreview | 
     preview: safeUrl(t.preview),
     link: `https://www.deezer.com/track/${id}`,
     duration: Math.max(0, Math.round(Number(t.duration) || 0)),
+    explicit: t.explicit_lyrics === true,
   };
 }
 

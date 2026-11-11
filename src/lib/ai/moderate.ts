@@ -4,7 +4,8 @@ import { openRouterChat, roleStatus } from "@/lib/ai/openrouter";
 /**
  * Moderasi AI via OpenRouter (server only) — tugas AI ini KHUSUS penilaian
  * confession, pakai key sendiri (prefiks OPENROUTER), terpisah dari AI musik.
- *  - approve : sopan & aman → boleh tayang otomatis (dibatasi kuota di route)
+ *  - approve : sopan & aman → boleh tayang otomatis (tanpa kuota tambahan;
+ *              satu-satunya batas adalah limit API key OpenRouter itu sendiri)
  *  - revise  : bisa diperbaiki → pengirim diminta merevisi
  *  - manual  : sensitif / ragu → serahkan ke moderator manusia
  * Gagal / timeout / jawaban tidak valid → null (caller memakai moderasi manual).
@@ -40,11 +41,6 @@ Balas HANYA dengan satu objek JSON, tanpa teks lain: {"verdict":"approve|revise|
 
 export function isAiConfigured(): boolean {
   return roleStatus("moderation").configured;
-}
-
-export function aiApprovalsPerHour(): number {
-  const n = Math.round(Number(process.env.AI_APPROVALS_PER_HOUR));
-  return Number.isFinite(n) && n >= 1 && n <= 200 ? n : 10;
 }
 
 function parseVerdict(text: string): { verdict: AiVerdict; feedback: string } | null {
