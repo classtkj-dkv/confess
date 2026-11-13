@@ -6,6 +6,8 @@ import { SongPicker } from "@/components/songs/SongPicker";
 import { CardStudioButton } from "@/components/studio/CardStudio";
 import type { Song } from "@/types";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { addHistory } from "@/lib/history";
 import { ApiClientError, api } from "@/lib/api";
 import { CATEGORIES } from "@/lib/categories";
 import { useToast } from "@/lib/auth/ToastProvider";
@@ -70,7 +72,21 @@ export function ConfessionForm({ defaultCategory }: { defaultCategory?: string }
           songLyric: song ? lyric.trim() : "",
         },
       });
-      setSentStatus(res.status === "PUBLISHED" ? "PUBLISHED" : "PENDING");
+      const sentAs = res.status === "PUBLISHED" ? "PUBLISHED" : "PENDING";
+      // Riwayat lokal (hanya di perangkat ini).
+      if (typeof res.id === "string" && res.id) {
+        addHistory({
+          id: res.id,
+          message: message.trim(),
+          category,
+          ...(fromName.trim() ? { fromName: fromName.trim() } : {}),
+          ...(toName.trim() ? { toName: toName.trim() } : {}),
+          ...(song ? { song: { title: song.title, artist: song.artist } } : {}),
+          createdAt: Date.now(),
+          status: sentAs,
+        });
+      }
+      setSentStatus(sentAs);
       setSentReview(String(res.review ?? "none"));
       setRevision("");
       try {
@@ -136,6 +152,9 @@ export function ConfessionForm({ defaultCategory }: { defaultCategory?: string }
           <button type="button" onClick={() => router.push("/feed")} className="btn-ghost">
             Buka feed
           </button>
+          <Link href="/riwayat" className="btn-ghost">
+            Lihat riwayatku
+          </Link>
         </div>
       </div>
     );

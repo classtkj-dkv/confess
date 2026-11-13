@@ -102,3 +102,18 @@ export type ReportReason =
   | "inappropriate";
 
 export type FeedFilter = "all" | "latest" | "popular" | "random";
+
+export type NotificationType = "comment" | "reply" | "approved" | "rejected";
+
+export interface AppNotification {
+  id: string;
+  type: NotificationType;
+  confessionId: string;
+  commentId?: string;
+  /** Nama tampil pengomentar (kosong = Anonim). */
+  fromName?: string;
+  /** Cuplikan komentar. */
+  snippet?: string;
+  createdAt: number;
+  read: boolean;
+}

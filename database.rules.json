@@ -106,6 +106,12 @@
         ".write": false
       }
     },
+    "notifications": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": false
+      }
+    },
     "sharedTemplates": {
       ".read": false,
       ".write": false

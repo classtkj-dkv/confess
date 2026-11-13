@@ -213,7 +213,7 @@ function MusicNote({ active }: { active: boolean }) {
       viewBox="0 0 24 24"
       aria-hidden
       className={`mx-auto transition-all duration-300 ${
-        active ? "h-6 w-6 scale-110 animate-pulse text-white" : "h-4 w-4 text-white/30"
+        active ? "h-6 w-6 scale-110 animate-pulse text-ink" : "h-4 w-4 text-ink/30"
       }`}
       fill="currentColor"
     >
@@ -555,7 +555,7 @@ export function SongModal({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center overflow-hidden bg-black/75 backdrop-blur-sm sm:items-center sm:p-4"
+      className="fixed inset-0 z-50 flex items-end justify-center overflow-hidden bg-background/80 backdrop-blur-sm sm:items-center sm:p-4"
       onClick={onClose}
     >
       {/* latar: sampul diburamkan jadi aurora */}
@@ -569,12 +569,12 @@ export function SongModal({
           className="pointer-events-none absolute inset-0 h-full w-full song-drift object-cover opacity-55 blur-3xl"
         />
       )}
-      <div aria-hidden className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/30 via-transparent to-black/65" />
+      <div aria-hidden className="pointer-events-none absolute inset-0 bg-gradient-to-b from-background/30 via-transparent to-background/70" />
       <div
         role="dialog"
         aria-modal="true"
         aria-label={`${song.title} — ${song.artist}`}
-        className="song-sheet relative mx-auto max-h-[100dvh] w-full max-w-md overflow-y-auto overflow-x-hidden rounded-t-[28px] border border-white/10 bg-[#0b0f1d]/90 px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-3 text-white shadow-2xl backdrop-blur-2xl sm:max-h-[92dvh] sm:rounded-[28px] sm:p-6 [@media(max-height:500px)]:max-w-3xl"
+        className="song-sheet relative mx-auto max-h-[100dvh] w-full max-w-md overflow-y-auto overflow-x-hidden rounded-t-[28px] border border-hairline bg-surface/90 px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-3 text-ink shadow-2xl backdrop-blur-2xl sm:max-h-[92dvh] sm:rounded-[28px] sm:p-6 [@media(max-height:500px)]:max-w-3xl"
         onClick={(e) => e.stopPropagation()}
       >
       <button
@@ -582,7 +582,7 @@ export function SongModal({
         onClick={() => setMuted((m) => !m)}
         aria-label={muted ? "Aktifkan suara" : "Bisukan"}
         aria-pressed={muted}
-        className="focus-ring absolute left-3 top-3 z-10 grid h-10 w-10 place-items-center rounded-full bg-white/10 text-white/80 transition-colors hover:bg-white/20 sm:left-4 sm:top-4"
+        className="focus-ring absolute left-3 top-3 z-10 grid h-10 w-10 place-items-center rounded-full bg-ink/10 text-ink/80 transition-colors hover:bg-ink/20 sm:left-4 sm:top-4"
       >
         <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
           <path d="M4 9v6h4l5 4V5L8 9H4Z" fill="currentColor" />
@@ -593,17 +593,17 @@ export function SongModal({
           type="button"
           onClick={onClose}
           aria-label="Tutup"
-          className="focus-ring absolute right-3 top-3 z-10 grid h-10 w-10 place-items-center rounded-full bg-white/10 sm:right-4 sm:top-4 text-white/80 transition-colors hover:bg-white/20"
+          className="focus-ring absolute right-3 top-3 z-10 grid h-10 w-10 place-items-center rounded-full bg-ink/10 sm:right-4 sm:top-4 text-ink/80 transition-colors hover:bg-ink/20"
         >
           <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden>
             <path d="M6 6l12 12M18 6 6 18" />
           </svg>
         </button>
 
-        <div aria-hidden className="mx-auto mb-3 h-1 w-10 rounded-full bg-white/20 sm:hidden" />
+        <div aria-hidden className="mx-auto mb-3 h-1 w-10 rounded-full bg-ink/20 sm:hidden" />
         <div className="[@media(max-height:500px)]:grid [@media(max-height:500px)]:grid-cols-2 [@media(max-height:500px)]:items-center [@media(max-height:500px)]:gap-6">
         <div>
-        <p className="song-in flex items-center justify-center gap-2 pt-1 text-[11px] font-semibold uppercase tracking-[0.22em] text-white/55">
+        <p className="song-in flex items-center justify-center gap-2 pt-1 text-[11px] font-semibold uppercase tracking-[0.22em] text-ink/55">
           <Equalizer bars={4} playing={playing} className="h-3 text-primary" />
           {playing ? "Sedang diputar" : "Preview lagu"}
         </p>
@@ -628,7 +628,7 @@ export function SongModal({
               <span
                 key={i}
                 aria-hidden
-                className="song-ring pointer-events-none absolute inset-[6%] rounded-full border border-white/20"
+                className="song-ring pointer-events-none absolute inset-[6%] rounded-full border border-ink/20"
                 style={{ animationDelay: `${i * 1600}ms` }}
               />
             ))}
@@ -653,7 +653,7 @@ export function SongModal({
             </div>
           </div>
           <div
-            className="song-breathe absolute left-0 top-0 overflow-hidden rounded-2xl shadow-[0_18px_40px_rgba(0,0,0,0.5)] ring-1 ring-white/15 [&>*]:!h-full [&>*]:!w-full [&>*]:!rounded-none"
+            className="song-breathe absolute left-0 top-0 overflow-hidden rounded-2xl shadow-[0_18px_40px_rgba(0,0,0,0.5)] ring-1 ring-ink/15 [&>*]:!h-full [&>*]:!w-full [&>*]:!rounded-none"
             style={{ width: "var(--s)", height: "var(--s)", animationPlayState: playing ? "running" : "paused" }}
           >
             <SongCover song={song} size={320} />
@@ -661,7 +661,7 @@ export function SongModal({
         </div>
 
         <MarqueeText text={song.title} className="song-in mt-5 text-xl font-bold tracking-tight [animation-delay:140ms] sm:text-2xl" />
-        <p className="song-in truncate text-center text-sm text-white/60 [animation-delay:200ms]">{song.artist}</p>
+        <p className="song-in truncate text-center text-sm text-ink/60 [animation-delay:200ms]">{song.artist}</p>
 
         {/* gelombang: tinggi tiap batang dari frekuensi musik yang sedang diputar */}
         <div aria-hidden className="song-in mx-auto mt-3 flex h-9 w-full items-end justify-center gap-[3px] text-primary [animation-delay:240ms] [filter:drop-shadow(0_0_6px_rgba(79,107,255,0.55))]">
@@ -681,10 +681,10 @@ export function SongModal({
         <div>
         <div className="song-in mt-3 [animation-delay:300ms]">
           {failed ? (
-            <p className="text-center text-xs text-white/50">Preview tidak bisa dimuat.</p>
+            <p className="text-center text-xs text-ink/50">Preview tidak bisa dimuat.</p>
           ) : (
             <>
-              {!ready && <p className="mb-1 text-center text-xs text-white/50">Memuat…</p>}
+              {!ready && <p className="mb-1 text-center text-xs text-ink/50">Memuat…</p>}
               {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
               <audio
                 ref={audioRef}
@@ -718,7 +718,7 @@ export function SongModal({
                 className="song-range w-full"
                 style={{ ["--pct" as string]: `${pct}%` }}
               />
-              <div className="mt-1 flex justify-between text-[11px] tabular-nums text-white/50">
+              <div className="mt-1 flex justify-between text-[11px] tabular-nums text-ink/50">
                 <span>{fmt(time)}</span>
                 <span>{fmt(duration)}</span>
               </div>
@@ -727,7 +727,7 @@ export function SongModal({
                   type="button"
                   onClick={() => seek(Math.max(0, time - 5))}
                   aria-label="Mundur 5 detik"
-                  className="focus-ring grid h-11 w-11 place-items-center rounded-full text-white/70 transition-colors hover:bg-white/10 hover:text-white"
+                  className="focus-ring grid h-11 w-11 place-items-center rounded-full text-ink/70 transition-colors hover:bg-ink/10 hover:text-ink"
                 >
                   <svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor" aria-hidden>
                     <path d="M11 6v12l-8.5-6L11 6Zm10 0v12l-8.5-6L21 6Z" />
@@ -737,7 +737,7 @@ export function SongModal({
                   type="button"
                   onClick={toggle}
                   aria-label={playing ? "Jeda" : "Putar"}
-                  className="focus-ring grid h-16 w-16 place-items-center rounded-full bg-white ring-8 ring-white/10 text-[#0c1020] shadow-[0_10px_30px_rgba(79,107,255,0.55)] transition-transform duration-200 hover:scale-105 active:scale-95"
+                  className="focus-ring grid h-16 w-16 place-items-center rounded-full bg-ink ring-8 ring-ink/10 text-background shadow-[0_10px_30px_rgba(79,107,255,0.55)] transition-transform duration-200 hover:scale-105 active:scale-95"
                 >
                   {playing ? (
                     <svg viewBox="0 0 24 24" className="h-6 w-6" fill="currentColor" aria-hidden>
@@ -753,7 +753,7 @@ export function SongModal({
                   type="button"
                   onClick={() => seek(Math.min(duration, time + 5))}
                   aria-label="Maju 5 detik"
-                  className="focus-ring grid h-11 w-11 place-items-center rounded-full text-white/70 transition-colors hover:bg-white/10 hover:text-white"
+                  className="focus-ring grid h-11 w-11 place-items-center rounded-full text-ink/70 transition-colors hover:bg-ink/10 hover:text-ink"
                 >
                   <svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor" aria-hidden>
                     <path d="M13 6v12l8.5-6L13 6ZM3 6v12l8.5-6L3 6Z" />
@@ -771,7 +771,7 @@ export function SongModal({
               onTouchStart={() => (touchedAt.current = Date.now())}
               onWheel={() => (touchedAt.current = Date.now())}
               aria-label="Lirik"
-              className="relative h-[clamp(7rem,18dvh,10rem)] overflow-y-auto overscroll-contain rounded-2xl border border-white/10 bg-white/5 px-3 py-12 text-center [mask-image:linear-gradient(to_bottom,transparent,black_28%,black_72%,transparent)] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+              className="relative h-[clamp(7rem,18dvh,10rem)] overflow-y-auto overscroll-contain rounded-2xl border border-ink/10 bg-ink/5 px-3 py-12 text-center [mask-image:linear-gradient(to_bottom,transparent,black_28%,black_72%,transparent)] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
             >
               {synced.map((l, i) => (
                 <button
@@ -788,15 +788,15 @@ export function SongModal({
                     l.music
                       ? ""
                       : i === active
-                        ? "text-base font-bold text-white [text-shadow:0_0_18px_rgba(124,92,255,0.65)]"
-                        : "text-sm font-medium text-white/35 hover:text-white/60"
+                        ? "text-base font-bold text-ink [text-shadow:0_0_18px_rgba(124,92,255,0.65)]"
+                        : "text-sm font-medium text-ink/35 hover:text-ink/60"
                   }`}
                 >
                   {l.music ? <MusicNote active={i === active} /> : l.text}
                 </button>
               ))}
             </div>
-            <p className="mt-1.5 text-center text-[11px] text-white/40">
+            <p className="mt-1.5 text-center text-[11px] text-ink/40">
               {aligning
                 ? "Menyelaraskan lirik dengan musik otomatis…"
                 : calibrated
@@ -805,7 +805,7 @@ export function SongModal({
               {calibrated && (
                 <>
                   {" "}
-                  <button type="button" onClick={resetSync} className="underline underline-offset-2 hover:text-white/70">
+                  <button type="button" onClick={resetSync} className="underline underline-offset-2 hover:text-ink/70">
                     Reset
                   </button>
                 </>
@@ -814,7 +814,7 @@ export function SongModal({
           </div>
         ) : (
           lyric && (
-            <blockquote className="mt-4 max-h-28 overflow-y-auto whitespace-pre-line rounded-2xl border border-white/10 bg-white/5 p-4 text-center text-sm font-medium italic leading-relaxed text-white/90">
+            <blockquote className="mt-4 max-h-28 overflow-y-auto whitespace-pre-line rounded-2xl border border-ink/10 bg-ink/5 p-4 text-center text-sm font-medium italic leading-relaxed text-ink/90">
               {lyric}
             </blockquote>
           )

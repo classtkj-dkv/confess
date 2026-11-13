@@ -252,6 +252,12 @@ const PATHS = {
       <circle cx="17" cy="16" r="3" />
     </>
   ),
+  bell: (
+    <>
+      <path d="M6 9a6 6 0 1 1 12 0c0 5 2 6 2 6H4s2-1 2-6Z" />
+      <path d="M10 19a2 2 0 0 0 4 0" />
+    </>
+  ),
   globe: (
     <>
       <circle cx="12" cy="12" r="9" />

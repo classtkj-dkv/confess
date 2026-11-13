@@ -220,3 +220,34 @@ Keputusan AI tersimpan di data privat (`confessions/{id}/moderation`). Komentar 
 - Di daftar confession admin, kiriman yang diputuskan AI diberi lencana "AI: menyetujui" atau "AI: serahkan ke moderator".
 - Pengirim diberi tahu bila pesannya dicek moderator karena kuota AI jam itu penuh.
 
+
+## Notifikasi balasan, riwayat lokal, dan PWA
+
+### Notifikasi dalam aplikasi
+- Server menulis `notifications/{uid}/{id}` saat: komentar baru di confess seseorang (`comment`), balasan atas
+  komentar seseorang (`reply`), dan keputusan moderator atas confess (`approved` / `rejected`). Tidak pernah
+  memberi notifikasi ke diri sendiri, dan confess yang langsung tayang lewat AI tidak memicu notifikasi.
+- Klien hanya **membaca** node miliknya (lihat `database.rules.json`); menandai dibaca lewat `POST /api/notifications`
+  (`{ id }` atau `{ all: true }`; "semua" juga membuang notifikasi lebih dari 30 hari).
+- Ikon lonceng di header menampilkan jumlah belum dibaca; daftar lengkap di `/notifications`.
+- Saat situs/aplikasi sedang terbuka dan ada notifikasi baru, muncul pop up (toast) singkat. Notifikasi lama tidak
+  memicu pop up saat situs dibuka. Pop up TIDAK muncul bila situs ditutup (itu butuh web push/FCM, belum ada).
+- Sesi anonim terikat ke browser/perangkat; menghapus data browser menghapus akses ke notifikasinya.
+- **Wajib:** salin ulang `database.rules.json` ke Firebase Console → Realtime Database → Rules → Publish,
+  karena ada node baru `notifications`.
+
+### Riwayat confess (lokal)
+- Setiap confess yang berhasil dikirim dicatat di `localStorage` perangkat (`confess:history:v1`, maks. 100 entri):
+  isi, kategori, nama dari/untuk, lagu, waktu, dan status saat dikirim. **Tidak ada yang dikirim ke server.**
+- Halaman `/riwayat` (ikon jam di header) menampilkan daftar + status terkini: Tayang (dengan jumlah suka/komentar),
+  Menunggu moderasi, Ditolak, atau Tidak tayang lagi. Status dicek dari data publik dan notifikasi, bukan dari riwayat server.
+- Bisa hapus per entri atau semua. Tidak ikut pindah antar perangkat dan hilang bila data browser dihapus.
+- Confess yang dikirim sebelum fitur ini tidak tercatat.
+
+### PWA (pasang ke layar utama)
+- `src/app/manifest.ts`, ikon di `public/icons/`, service worker `public/sw.js`, halaman `public/offline.html`.
+- Service worker hanya aktif di production dan **tidak** menyimpan halaman, `/api`, maupun data Firebase;
+  ia hanya mencache aset statis (`/_next/static`, ikon) dan menampilkan halaman offline bila tidak ada koneksi.
+- Ajakan pasang muncul di atas konten (Android/Chrome: tombol "Pasang sekarang"; iOS Safari: petunjuk Bagikan →
+  Tambah ke Layar Utama), disembunyikan 14 hari setelah ditutup.
+- Untuk uji: `npm run build && npm start`, lalu buka di Chrome → DevTools → Application → Manifest / Service Workers.

@@ -4,6 +4,9 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Logo } from "@/components/ui/Logo";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
+import { NotificationBell } from "@/components/notifications/NotificationBell";
+import { HistoryLink } from "@/components/history/HistoryLink";
+import { InstallPrompt } from "@/components/pwa/InstallPrompt";
 import { Sidebar } from "./Sidebar";
 import { MobileNav } from "./MobileNav";
 import { SearchBar } from "./SearchBar";
@@ -81,11 +84,14 @@ export function AppShell({ children }: AppShellProps) {
                   Tulis Confess
                 </Link>
               )}
+              <HistoryLink />
+              <NotificationBell />
               <ThemeToggle />
             </div>
           </div>
         </header>
         <main className="mx-auto w-full max-w-5xl flex-1 px-4 pb-28 pt-6 md:px-6 md:pb-14 md:pt-8">
+          <InstallPrompt />
           {children}
         </main>
         <MobileNav />

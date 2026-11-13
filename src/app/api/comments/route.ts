@@ -12,6 +12,7 @@ import { validateCommentInput } from "@/lib/validations";
 import { getAdminSettings } from "@/lib/firebase/settings";
 import { publicCommentOf } from "@/lib/firebase/publicData";
 import { touchAdmin, writeActivity } from "@/lib/security/audit";
+import { addNotification } from "@/lib/security/notify";
 import { enforceIp } from "@/lib/security/ipWatch";
 
 export const runtime = "nodejs";
@@ -92,12 +93,34 @@ export async function POST(req: NextRequest): Promise<Response> {
       status: "VISIBLE",
     };
     // Satu update multi-path: komentar privat + publik + counter (atomik).
-    await db.ref().update({
+    const updates: Record<string, unknown> = {
       [`comments/${commentId}`]: record,
       [`public/comments/${confessionId}/${commentId}`]: publicCommentOf(commentId, record),
       [`confessions/${confessionId}/commentsCount`]: ServerValue.increment(1),
       [`public/confessions/${confessionId}/commentsCount`]: ServerValue.increment(1),
-    });
+    };
+
+    // Notifikasi: balasan → pemilik komentar yang dibalas; komentar baru →
+    // pemilik confession. Tidak pernah memberi notifikasi ke diri sendiri.
+    try {
+      const targetSnap = parentId
+        ? await db.ref(`comments/${parentId}/authorUid`).get()
+        : await db.ref(`confessions/${confessionId}/authorUid`).get();
+      const targetUid = String(targetSnap.val() ?? "");
+      if (targetUid && targetUid !== uid) {
+        addNotification(updates, targetUid, {
+          type: parentId ? "reply" : "comment",
+          confessionId,
+          commentId,
+          fromName,
+          snippet: clean,
+        });
+      }
+    } catch {
+      /* notifikasi tidak boleh menggagalkan komentar */
+    }
+
+    await db.ref().update(updates);
     await touchAdmin();
     await writeActivity(uid, "comment_created", commentId, {
       confessionId,

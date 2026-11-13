@@ -6,6 +6,7 @@ import { Toaster } from "@/components/ui/Toaster";
 import { AuthProvider } from "@/lib/auth/AuthProvider";
 import { ThemeProvider } from "@/lib/auth/ThemeProvider";
 import { ToastProvider } from "@/lib/auth/ToastProvider";
+import { PwaRegister } from "@/components/pwa/PwaRegister";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "swap" });
 
@@ -13,6 +14,9 @@ const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://confess.example.co
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
+  applicationName: "CONFESS",
+  appleWebApp: { capable: true, title: "CONFESS", statusBarStyle: "black-translucent" },
+  icons: { apple: "/icons/apple-touch-icon.png" },
   title: {
     default: "CONFESS — Ceritakan apa yang ada di pikiranmu",
     template: "%s — CONFESS",
@@ -46,6 +50,7 @@ export default function RootLayout({
             <ToastProvider>
               <AppShell>{children}</AppShell>
               <Toaster />
+              <PwaRegister />
             </ToastProvider>
           </AuthProvider>
         </ThemeProvider>

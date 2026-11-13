@@ -15,6 +15,7 @@ import {
 } from "@/lib/firebase/publicData";
 import { touchAdmin, writeAudit } from "@/lib/security/audit";
 import { ipKey, setIpBlocked } from "@/lib/security/ipWatch";
+import { addNotification } from "@/lib/security/notify";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -96,22 +97,38 @@ export async function POST(req: NextRequest): Promise<Response> {
         const snap = await db.ref(`confessions/${body.id}`).get();
         if (!snap.exists()) throw new ApiError(404, "Confession tidak ditemukan.");
         const conf = snap.val() as Record<string, unknown>;
-        await db.ref().update({
+        const approveUpdates: Record<string, unknown> = {
           [`confessions/${body.id}/status`]: "PUBLISHED",
           [`confessions/${body.id}/updatedAt`]: now,
           [`public/confessions/${body.id}`]: publicConfessionOf(body.id, conf),
-        });
+        };
+        // Beri tahu pengirim (hanya bila sebelumnya belum tayang).
+        if (conf.status !== "PUBLISHED") {
+          addNotification(approveUpdates, String(conf.authorUid ?? ""), {
+            type: "approved",
+            confessionId: body.id,
+          });
+        }
+        await db.ref().update(approveUpdates);
         message = "Confession disetujui.";
         break;
       }
       case "rejectConfession": {
         const snap = await db.ref(`confessions/${body.id}`).get();
         if (!snap.exists()) throw new ApiError(404, "Confession tidak ditemukan.");
-        await db.ref().update({
+        const rejected = snap.val() as Record<string, unknown>;
+        const rejectUpdates: Record<string, unknown> = {
           [`confessions/${body.id}/status`]: "REJECTED",
           [`confessions/${body.id}/updatedAt`]: now,
           [`public/confessions/${body.id}`]: null,
-        });
+        };
+        if (rejected.status !== "REJECTED") {
+          addNotification(rejectUpdates, String(rejected.authorUid ?? ""), {
+            type: "rejected",
+            confessionId: body.id,
+          });
+        }
+        await db.ref().update(rejectUpdates);
         message = "Confession ditolak.";
         break;
       }
