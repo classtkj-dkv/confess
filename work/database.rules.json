@@ -1,0 +1,129 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    "users": {
+      ".read": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('role').val() === 'owner')",
+      ".indexOn": [
+        "createdAt",
+        "role"
+      ],
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": false
+      }
+    },
+    "confessions": {
+      ".read": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'moderator' || root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('role').val() === 'owner')",
+      ".write": false,
+      ".indexOn": [
+        "status",
+        "createdAt",
+        "category",
+        "authorUid"
+      ],
+      "$id": {
+        ".validate": "newData.hasChildren(['message','category','status','createdAt']) && newData.child('message').isString() && newData.child('message').val().length >= 1 && newData.child('message').val().length <= 1000 && newData.child('status').val().matches(/^(PENDING|PUBLISHED|REJECTED)$/) && newData.child('category').val().matches(/^(love|curhat|school|friendship|life|random)$/)"
+      }
+    },
+    "comments": {
+      ".read": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'moderator' || root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('role').val() === 'owner')",
+      ".write": false,
+      ".indexOn": [
+        "status",
+        "createdAt",
+        "confessionId"
+      ],
+      "$id": {
+        ".validate": "newData.hasChildren(['confessionId','message','status','createdAt']) && newData.child('message').isString() && newData.child('message').val().length <= 500 && newData.child('status').val().matches(/^(VISIBLE|HIDDEN|PENDING)$/)"
+      }
+    },
+    "public": {
+      "confessions": {
+        ".read": true,
+        ".write": false,
+        ".indexOn": [
+          "createdAt",
+          "likesCount",
+          "category",
+          "messageLower"
+        ]
+      },
+      "comments": {
+        "$confessionId": {
+          ".read": true,
+          ".write": false,
+          ".indexOn": [
+            "createdAt"
+          ]
+        }
+      }
+    },
+    "reactions": {
+      "$confessionId": {
+        "$uid": {
+          ".read": "auth != null && auth.uid === $uid",
+          ".write": false
+        }
+      }
+    },
+    "reports": {
+      ".read": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'moderator' || root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('role').val() === 'owner')",
+      ".write": false,
+      ".indexOn": [
+        "status",
+        "createdAt",
+        "confessionId"
+      ]
+    },
+    "settings": {
+      "general": {
+        ".read": true,
+        ".write": false
+      }
+    },
+    "announcements": {
+      ".read": true,
+      ".write": false,
+      ".indexOn": [
+        "createdAt"
+      ]
+    },
+    "audit_logs": {
+      ".read": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('role').val() === 'owner')",
+      ".write": false,
+      ".indexOn": [
+        "timestamp"
+      ]
+    },
+    "stats": {
+      ".read": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'moderator' || root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('role').val() === 'owner')",
+      ".write": false
+    },
+    "meta": {
+      "adminTick": {
+        ".read": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'moderator' || root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('role').val() === 'owner')",
+        ".write": false
+      }
+    },
+    "sharedTemplates": {
+      ".read": false,
+      ".write": false
+    },
+    "rateLimits": {
+      ".read": false,
+      ".write": false
+    },
+    "activity_logs": {
+      ".read": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('role').val() === 'owner')",
+      ".write": false,
+      ".indexOn": [
+        "timestamp"
+      ]
+    },
+    "ip_logs": {
+      ".read": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('role').val() === 'owner')",
+      ".write": false
+    }
+  }
+}
