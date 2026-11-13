@@ -67,7 +67,7 @@ export function SongCard({ song, lyric }: { song: Song; lyric?: string }) {
       <button
         type="button"
         onClick={openPlayer}
-        className="focus-ring group relative flex w-full items-center gap-3 overflow-hidden rounded-2xl border border-hairline bg-gradient-to-r from-primary/10 via-surface to-secondary/10 p-2.5 text-left transition-all duration-200 hover:border-primary/40 hover:shadow-soft"
+        className="focus-ring group relative flex w-full items-center gap-3 overflow-hidden rounded-2xl border border-hairline bg-surface p-2.5 text-left transition-colors duration-200 hover:border-primary/40 hover:bg-ink/[0.03]"
         aria-label={`Putar preview ${song.title}`}
       >
         <SongCover song={song} />
@@ -78,7 +78,7 @@ export function SongCard({ song, lyric }: { song: Song; lyric?: string }) {
         <Equalizer bars={4} className="hidden h-5 text-primary/60 sm:flex" playing={false} />
         <span
           aria-hidden
-          className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-gradient-to-br from-primary to-secondary text-white shadow-glow transition-transform duration-200 group-hover:scale-110"
+          className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-primary text-white transition-transform duration-200 group-hover:scale-105"
         >
           <Icon name="play" className="h-3.5 w-3.5" />
         </span>
@@ -521,7 +521,7 @@ export function SongModal({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center overflow-hidden bg-black/70 p-3 backdrop-blur-sm sm:p-4"
+      className="fixed inset-0 z-50 flex items-end justify-center overflow-hidden bg-black/75 backdrop-blur-sm sm:items-center sm:p-4"
       onClick={onClose}
     >
       {/* latar: sampul diburamkan jadi aurora */}
@@ -539,26 +539,30 @@ export function SongModal({
         role="dialog"
         aria-modal="true"
         aria-label={`${song.title} — ${song.artist}`}
-        className="song-sheet relative mx-auto max-h-[92dvh] w-full max-w-sm overflow-y-auto overflow-x-hidden rounded-3xl border border-white/10 bg-[#0c1020]/85 p-5 text-white shadow-2xl backdrop-blur-2xl"
+        className="song-sheet relative mx-auto max-h-[100dvh] w-full max-w-md overflow-y-auto overflow-x-hidden rounded-t-[28px] border border-white/10 bg-[#0b0f1d]/90 px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-3 text-white shadow-2xl backdrop-blur-2xl sm:max-h-[92dvh] sm:rounded-[28px] sm:p-6 [@media(max-height:500px)]:max-w-3xl"
         onClick={(e) => e.stopPropagation()}
       >
         <button
           type="button"
           onClick={onClose}
           aria-label="Tutup"
-          className="focus-ring absolute right-4 top-4 grid h-9 w-9 place-items-center rounded-full bg-white/10 text-white/80 transition-colors hover:bg-white/20"
+          className="focus-ring absolute right-3 top-3 z-10 grid h-10 w-10 place-items-center rounded-full bg-white/10 sm:right-4 sm:top-4 text-white/80 transition-colors hover:bg-white/20"
         >
           <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden>
             <path d="M6 6l12 12M18 6 6 18" />
           </svg>
         </button>
 
-        <p className="pt-2 text-center text-[11px] font-semibold uppercase tracking-[0.25em] text-white/50">
+        <div aria-hidden className="mx-auto mb-3 h-1 w-10 rounded-full bg-white/20 sm:hidden" />
+        <div className="[@media(max-height:500px)]:grid [@media(max-height:500px)]:grid-cols-2 [@media(max-height:500px)]:items-center [@media(max-height:500px)]:gap-6">
+        <div>
+        <p className="flex items-center justify-center gap-2 pt-1 text-[11px] font-semibold uppercase tracking-[0.22em] text-white/55">
+          <Equalizer bars={4} playing={playing} className="h-3 text-primary" />
           {playing ? "Sedang diputar" : "Preview lagu"}
         </p>
 
         {/* piringan hitam berputar dengan sampul di tengah */}
-        <div className="relative mx-auto mt-4 aspect-square w-[min(11.5rem,46vw)]">
+        <div className="relative mx-auto mt-5 aspect-square w-[clamp(8rem,min(46vw,30dvh),14rem)]">
           <div
             aria-hidden
             className={`absolute -inset-4 rounded-full bg-gradient-to-br from-primary to-secondary blur-2xl transition-opacity duration-700 ${
@@ -576,6 +580,17 @@ export function SongModal({
             </div>
             <span className="absolute left-1/2 top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#0c1020] ring-2 ring-white/20" />
           </div>
+          <svg
+            aria-hidden
+            viewBox="0 0 100 100"
+            className={`pointer-events-none absolute -right-[10%] -top-[10%] h-[60%] w-[60%] origin-[82%_14%] transition-transform duration-700 ease-out ${
+              playing ? "rotate-[12deg]" : "-rotate-[12deg]"
+            }`}
+          >
+            <circle cx="82" cy="14" r="7" fill="#2a2f45" stroke="rgba(255,255,255,.25)" />
+            <path d="M82 14 L44 64" stroke="rgba(255,255,255,.75)" strokeWidth="3" strokeLinecap="round" />
+            <rect x="36" y="62" width="14" height="8" rx="2" transform="rotate(-38 43 66)" fill="rgba(255,255,255,.9)" />
+          </svg>
         </div>
 
         <p className="mt-4 truncate text-center text-xl font-extrabold tracking-tight">{song.title}</p>
@@ -589,12 +604,14 @@ export function SongModal({
               ref={(el) => {
                 barRefs.current[i] = el;
               }}
-              className="h-full w-[3px] origin-bottom rounded-full bg-current"
+              className="h-full w-[3px] origin-bottom rounded-full bg-gradient-to-t from-primary to-sky-300"
               style={{ transform: "scaleY(0.08)" }}
             />
           ))}
         </div>
 
+        </div>
+        <div>
         <div className="mt-3">
           {failed ? (
             <p className="text-center text-xs text-white/50">Preview tidak bisa dimuat.</p>
@@ -638,12 +655,12 @@ export function SongModal({
                 <span>{fmt(time)}</span>
                 <span>{fmt(duration)}</span>
               </div>
-              <div className="mt-2 flex items-center justify-center gap-5">
+              <div className="mt-2 flex items-center justify-center gap-2 sm:gap-4">
                 <button
                   type="button"
                   onClick={() => seek(Math.max(0, time - 5))}
                   aria-label="Mundur 5 detik"
-                  className="focus-ring grid h-10 w-10 place-items-center rounded-full text-white/70 transition-colors hover:bg-white/10 hover:text-white"
+                  className="focus-ring grid h-11 w-11 place-items-center rounded-full text-white/70 transition-colors hover:bg-white/10 hover:text-white"
                 >
                   <svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor" aria-hidden>
                     <path d="M11 6v12l-8.5-6L11 6Zm10 0v12l-8.5-6L21 6Z" />
@@ -653,7 +670,7 @@ export function SongModal({
                   type="button"
                   onClick={toggle}
                   aria-label={playing ? "Jeda" : "Putar"}
-                  className="focus-ring grid h-14 w-14 place-items-center rounded-full bg-white text-[#0c1020] shadow-[0_10px_30px_rgba(79,107,255,0.55)] transition-transform duration-200 hover:scale-105 active:scale-95"
+                  className="focus-ring grid h-16 w-16 place-items-center rounded-full bg-white text-[#0c1020] shadow-[0_10px_30px_rgba(79,107,255,0.55)] transition-transform duration-200 hover:scale-105 active:scale-95"
                 >
                   {playing ? (
                     <svg viewBox="0 0 24 24" className="h-6 w-6" fill="currentColor" aria-hidden>
@@ -667,10 +684,20 @@ export function SongModal({
                 </button>
                 <button
                   type="button"
+                  onClick={() => seek(Math.min(duration, time + 5))}
+                  aria-label="Maju 5 detik"
+                  className="focus-ring grid h-11 w-11 place-items-center rounded-full text-white/70 transition-colors hover:bg-white/10 hover:text-white"
+                >
+                  <svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor" aria-hidden>
+                    <path d="M13 6v12l8.5-6L13 6ZM3 6v12l8.5-6L3 6Z" />
+                  </svg>
+                </button>
+                <button
+                  type="button"
                   onClick={() => setMuted((m) => !m)}
                   aria-label={muted ? "Aktifkan suara" : "Bisukan"}
                   aria-pressed={muted}
-                  className="focus-ring grid h-10 w-10 place-items-center rounded-full text-white/70 transition-colors hover:bg-white/10 hover:text-white"
+                  className="focus-ring grid h-11 w-11 place-items-center rounded-full text-white/70 transition-colors hover:bg-white/10 hover:text-white"
                 >
                   <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
                     <path d="M4 9v6h4l5 4V5L8 9H4Z" fill="currentColor" />
@@ -737,6 +764,8 @@ export function SongModal({
             </blockquote>
           )
         )}
+        </div>
+        </div>
       </div>
     </div>,
     document.body

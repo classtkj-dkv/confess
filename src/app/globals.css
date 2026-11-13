@@ -41,6 +41,8 @@
 }
 
 html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
   scroll-behavior: smooth;
   -webkit-tap-highlight-color: transparent;
 }
@@ -234,8 +236,9 @@ main > * {
 }
 
 .vinyl-disc {
-  /* 1 putaran per 18 detik: terlihat berputar, tapi tidak pusing/kencang. */
-  animation: vinyl-spin 18s linear infinite;
+  /* 1 putaran per 30 detik: pelan & tenang, tidak pusing. */
+  animation: vinyl-spin 30s linear infinite;
+  will-change: transform;
 }
 
 .eq-bar {
@@ -250,8 +253,9 @@ main > * {
 .song-range {
   -webkit-appearance: none;
   appearance: none;
-  height: 6px;
+  height: 5px;
   border-radius: 999px;
+  touch-action: pan-y;
   outline: none;
   cursor: pointer;
   background: linear-gradient(
@@ -264,16 +268,16 @@ main > * {
 
 .song-range::-webkit-slider-thumb {
   -webkit-appearance: none;
-  height: 14px;
-  width: 14px;
+  height: 18px;
+  width: 18px;
   border-radius: 50%;
   background: #fff;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
 }
 
 .song-range::-moz-range-thumb {
-  height: 14px;
-  width: 14px;
+  height: 18px;
+  width: 18px;
   border: 0;
   border-radius: 50%;
   background: #fff;
