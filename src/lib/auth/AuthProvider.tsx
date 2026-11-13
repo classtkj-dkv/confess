@@ -62,6 +62,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const auth = getAuthClient();
     let unsubRole: (() => void) | null = null;
 
+    // Jaring pengaman: bila RTDB tidak pernah membalas (jaringan/URL salah),
+    // jangan biarkan halaman admin loading selamanya.
+    const safety = window.setTimeout(() => {
+      setState((s) => (s.loading ? { ...s, loading: false } : s));
+    }, 10000);
+
     const unsubAuth = onAuthStateChanged(auth, (user) => {
       // Lepas listener role akun sebelumnya (ganti akun / logout).
       unsubRole?.();
@@ -113,6 +119,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
 
     return () => {
+      window.clearTimeout(safety);
       unsubRole?.();
       unsubAuth();
     };

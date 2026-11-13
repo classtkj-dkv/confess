@@ -677,12 +677,20 @@ function CommentRows({
   const [status, setStatus] = useState("VISIBLE");
   const [busy, setBusy] = useState<string | null>(null);
 
+  const [loadError, setLoadError] = useState<string | null>(null);
+
   const refresh = useCallback(async () => {
     setRows(null);
-    const data = (await api(`/api/admin/listings?type=comments&status=${status}`)) as {
-      items: AdminCommentRow[];
-    };
-    setRows(data.items ?? []);
+    setLoadError(null);
+    try {
+      const data = (await api(`/api/admin/listings?type=comments&status=${status}`, {
+        method: "GET",
+      })) as { items: AdminCommentRow[] };
+      setRows(data.items ?? []);
+    } catch (err) {
+      setRows([]);
+      setLoadError(err instanceof ApiClientError ? err.message : "Gagal memuat komentar.");
+    }
   }, [status]);
 
   useEffect(() => {
@@ -717,6 +725,8 @@ function CommentRows({
 
       {rows === null ? (
         <div className="space-y-3">{Array.from({ length: 3 }).map((_, i) => <StatSkeleton key={i} />)}</div>
+      ) : loadError ? (
+        <ErrorState description={loadError} />
       ) : rows.length === 0 ? (
         <EmptyState icon="message" title="Tidak ada komentar" />
       ) : (
@@ -785,12 +795,20 @@ function ReportRows({
   const [status, setStatus] = useState("OPEN");
   const [busy, setBusy] = useState<string | null>(null);
 
+  const [loadError, setLoadError] = useState<string | null>(null);
+
   const refresh = useCallback(async () => {
     setRows(null);
-    const data = (await api(`/api/admin/listings?type=reports&status=${status}`)) as {
-      items: AdminReportRow[];
-    };
-    setRows(data.items ?? []);
+    setLoadError(null);
+    try {
+      const data = (await api(`/api/admin/listings?type=reports&status=${status}`, {
+        method: "GET",
+      })) as { items: AdminReportRow[] };
+      setRows(data.items ?? []);
+    } catch (err) {
+      setRows([]);
+      setLoadError(err instanceof ApiClientError ? err.message : "Gagal memuat laporan.");
+    }
   }, [status]);
 
   useEffect(() => {
@@ -825,6 +843,8 @@ function ReportRows({
 
       {rows === null ? (
         <div className="space-y-3">{Array.from({ length: 3 }).map((_, i) => <StatSkeleton key={i} />)}</div>
+      ) : loadError ? (
+        <ErrorState description={loadError} />
       ) : rows.length === 0 ? (
         <EmptyState icon="check" title="Tidak ada laporan" />
       ) : (
@@ -926,13 +946,26 @@ function UserRows({
   const [blockedOnly, setBlockedOnly] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [loadError, setLoadError] = useState<string | null>(null);
+
   const refresh = useCallback(async () => {
     setRows(null);
-    const data = (await api("/api/admin/listings?type=users")) as {
-      items: AdminUserRow[];
-    };
-    setRows(data.items ?? []);
+    setLoadError(null);
+    try {
+      const data = (await api("/api/admin/listings?type=users", {
+        method: "GET",
+      })) as { items: AdminUserRow[] };
+      setRows(data.items ?? []);
+    } catch (err) {
+      setRows([]);
+      setLoadError(err instanceof ApiClientError ? err.message : "Gagal memuat pengguna.");
+    }
   }, []);
+
+  // Sebelumnya tidak ada pemanggilan saat tab dibuka → skeleton selamanya.
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
 
   async function act(type: string, id: string) {
     setBusy(id);
@@ -994,6 +1027,8 @@ function UserRows({
 
       {filtered === null ? (
         <div className="space-y-3">{Array.from({ length: 3 }).map((_, i) => <StatSkeleton key={i} />)}</div>
+      ) : loadError ? (
+        <ErrorState description={loadError} />
       ) : filtered.length === 0 ? (
         <EmptyState icon="users" title="Tidak ada pengguna" />
       ) : (
@@ -1068,10 +1103,20 @@ function IpRows({
   const [onlyFlagged, setOnlyFlagged] = useState(false);
   const [search, setSearch] = useState("");
 
+  const [loadError, setLoadError] = useState<string | null>(null);
+
   const refresh = useCallback(async () => {
     setRows(null);
-    const data = (await api("/api/admin/listings?type=ips")) as { items: AdminIpRow[] };
-    setRows(data.items ?? []);
+    setLoadError(null);
+    try {
+      const data = (await api("/api/admin/listings?type=ips", {
+        method: "GET",
+      })) as { items: AdminIpRow[] };
+      setRows(data.items ?? []);
+    } catch (err) {
+      setRows([]);
+      setLoadError(err instanceof ApiClientError ? err.message : "Gagal memuat data IP.");
+    }
   }, []);
 
   useEffect(() => {
@@ -1123,6 +1168,8 @@ function IpRows({
 
       {filtered === null ? (
         <div className="space-y-3">{Array.from({ length: 3 }).map((_, i) => <StatSkeleton key={i} />)}</div>
+      ) : loadError ? (
+        <ErrorState description={loadError} />
       ) : filtered.length === 0 ? (
         <EmptyState icon="globe" title="Belum ada catatan IP" />
       ) : (
@@ -1531,7 +1578,8 @@ function AuditRows() {
     void (async () => {
       try {
         const data = (await api(
-          `/api/admin/listings?type=audit&source=${source}&pageSize=50`
+          `/api/admin/listings?type=audit&source=${source}&pageSize=50`,
+          { method: "GET" }
         )) as { items: AuditRow[] };
         if (alive) setRows(data.items ?? []);
       } catch {
