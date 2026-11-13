@@ -119,6 +119,40 @@ function Equalizer({
   );
 }
 
+/** Judul panjang bergeser pelan bolak-balik; judul pendek tetap diam di tengah. */
+function MarqueeText({ text, className = "" }: { text: string; className?: string }) {
+  const boxRef = useRef<HTMLDivElement>(null);
+  const txtRef = useRef<HTMLSpanElement>(null);
+  const [shift, setShift] = useState(0);
+  useEffect(() => {
+    const measure = () => {
+      const box = boxRef.current;
+      const t = txtRef.current;
+      if (!box || !t) return;
+      const over = t.scrollWidth - box.clientWidth;
+      setShift(over > 4 ? over + 24 : 0);
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, [text]);
+  return (
+    <div ref={boxRef} className={`overflow-hidden whitespace-nowrap ${shift ? "" : "text-center"} ${className}`}>
+      <span
+        ref={txtRef}
+        className={shift ? "song-marquee inline-block" : "inline-block"}
+        style={
+          shift
+            ? { ["--shift" as string]: `-${shift}px`, animationDuration: `${Math.max(9, shift / 16)}s` }
+            : undefined
+        }
+      >
+        {text}
+      </span>
+    </div>
+  );
+}
+
 function fmt(t: number): string {
   if (!Number.isFinite(t) || t < 0) return "0:00";
   const m = Math.floor(t / 60);
@@ -532,7 +566,7 @@ export function SongModal({
           alt=""
           aria-hidden
           referrerPolicy="no-referrer"
-          className="pointer-events-none absolute inset-0 h-full w-full scale-125 object-cover opacity-55 blur-3xl"
+          className="pointer-events-none absolute inset-0 h-full w-full song-drift object-cover opacity-55 blur-3xl"
         />
       )}
       <div aria-hidden className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/30 via-transparent to-black/65" />
@@ -543,6 +577,18 @@ export function SongModal({
         className="song-sheet relative mx-auto max-h-[100dvh] w-full max-w-md overflow-y-auto overflow-x-hidden rounded-t-[28px] border border-white/10 bg-[#0b0f1d]/90 px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-3 text-white shadow-2xl backdrop-blur-2xl sm:max-h-[92dvh] sm:rounded-[28px] sm:p-6 [@media(max-height:500px)]:max-w-3xl"
         onClick={(e) => e.stopPropagation()}
       >
+      <button
+        type="button"
+        onClick={() => setMuted((m) => !m)}
+        aria-label={muted ? "Aktifkan suara" : "Bisukan"}
+        aria-pressed={muted}
+        className="focus-ring absolute left-3 top-3 z-10 grid h-10 w-10 place-items-center rounded-full bg-white/10 text-white/80 transition-colors hover:bg-white/20 sm:left-4 sm:top-4"
+      >
+        <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+          <path d="M4 9v6h4l5 4V5L8 9H4Z" fill="currentColor" />
+          {muted ? <path d="m17 9 5 6m0-6-5 6" /> : <path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12" />}
+        </svg>
+      </button>
         <button
           type="button"
           onClick={onClose}
@@ -557,17 +603,17 @@ export function SongModal({
         <div aria-hidden className="mx-auto mb-3 h-1 w-10 rounded-full bg-white/20 sm:hidden" />
         <div className="[@media(max-height:500px)]:grid [@media(max-height:500px)]:grid-cols-2 [@media(max-height:500px)]:items-center [@media(max-height:500px)]:gap-6">
         <div>
-        <p className="flex items-center justify-center gap-2 pt-1 text-[11px] font-semibold uppercase tracking-[0.22em] text-white/55">
+        <p className="song-in flex items-center justify-center gap-2 pt-1 text-[11px] font-semibold uppercase tracking-[0.22em] text-white/55">
           <Equalizer bars={4} playing={playing} className="h-3 text-primary" />
           {playing ? "Sedang diputar" : "Preview lagu"}
         </p>
 
         {/* sampul album; piringan hitam keluar dari sampul saat lagu diputar */}
         <div
-          className="relative mx-auto mt-5"
+          className="song-in relative mx-auto mt-4 [animation-delay:60ms]"
           style={{
-            ["--s" as string]: "clamp(8.5rem, min(50vw, 30dvh), 14rem)",
-            width: "calc(var(--s) * 1.3)",
+            ["--s" as string]: "clamp(8rem, min(46vw, 27dvh), 13rem)",
+            width: "calc(var(--s) * 1.4)",
             height: "var(--s)",
           }}
         >
@@ -577,39 +623,48 @@ export function SongModal({
               playing ? "opacity-50" : "opacity-20"
             }`}
           />
+          {playing &&
+            [0, 1].map((i) => (
+              <span
+                key={i}
+                aria-hidden
+                className="song-ring pointer-events-none absolute inset-[6%] rounded-full border border-white/20"
+                style={{ animationDelay: `${i * 1600}ms` }}
+              />
+            ))}
           <div
             className="absolute top-0 transition-[left] duration-700 ease-out"
             style={{
-              left: playing ? "calc(var(--s) * 0.3)" : "calc(var(--s) * 0.1)",
+              left: playing ? "calc(var(--s) * 0.4)" : "calc(var(--s) * 0.12)",
               width: "var(--s)",
               height: "var(--s)",
             }}
           >
             <div
-              className="vinyl-disc relative h-full w-full rounded-full shadow-[0_18px_44px_rgba(0,0,0,0.55)]"
+              className="vinyl-disc relative h-full w-full rounded-full shadow-[0_0_0_1.5px_rgba(255,255,255,0.2),0_18px_44px_rgba(0,0,0,0.55),0_0_44px_rgba(124,92,255,0.4)]"
               style={{ animationPlayState: playing ? "running" : "paused" }}
             >
-              <div className="absolute inset-0 rounded-full bg-[repeating-radial-gradient(circle_at_center,#0a0a0f_0,#0a0a0f_2px,#15151d_3px,#0a0a0f_4px)]" />
-              <div className="absolute inset-0 rounded-full bg-[conic-gradient(from_30deg,transparent_0deg,rgba(255,255,255,0.14)_40deg,transparent_90deg,transparent_180deg,rgba(255,255,255,0.1)_220deg,transparent_270deg)]" />
-              <div className="absolute inset-[34%] overflow-hidden rounded-full ring-2 ring-black/70 [&>*]:!h-full [&>*]:!w-full [&>*]:!rounded-none">
+              <div className="absolute inset-0 rounded-full bg-[repeating-radial-gradient(circle_at_center,#16161f_0,#16161f_2px,#2e2e40_3px,#16161f_4px)]" />
+              <div className="absolute inset-0 rounded-full bg-[conic-gradient(from_30deg,transparent_0deg,rgba(255,255,255,0.3)_40deg,transparent_90deg,transparent_180deg,rgba(255,255,255,0.22)_220deg,transparent_270deg)]" />
+              <div className="absolute inset-[34%] overflow-hidden rounded-full ring-[3px] ring-white/30 [&>*]:!h-full [&>*]:!w-full [&>*]:!rounded-none">
                 <SongCover song={song} size={120} />
               </div>
               <span className="absolute left-1/2 top-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#0b0f1d] ring-2 ring-white/25" />
             </div>
           </div>
           <div
-            className="absolute left-0 top-0 overflow-hidden rounded-2xl shadow-[0_18px_40px_rgba(0,0,0,0.5)] ring-1 ring-white/15 [&>*]:!h-full [&>*]:!w-full [&>*]:!rounded-none"
-            style={{ width: "var(--s)", height: "var(--s)" }}
+            className="song-breathe absolute left-0 top-0 overflow-hidden rounded-2xl shadow-[0_18px_40px_rgba(0,0,0,0.5)] ring-1 ring-white/15 [&>*]:!h-full [&>*]:!w-full [&>*]:!rounded-none"
+            style={{ width: "var(--s)", height: "var(--s)", animationPlayState: playing ? "running" : "paused" }}
           >
             <SongCover song={song} size={320} />
           </div>
         </div>
 
-        <p className="mt-6 truncate text-center text-xl font-bold tracking-tight sm:text-2xl">{song.title}</p>
-        <p className="truncate text-center text-sm text-white/60">{song.artist}</p>
+        <MarqueeText text={song.title} className="song-in mt-5 text-xl font-bold tracking-tight [animation-delay:140ms] sm:text-2xl" />
+        <p className="song-in truncate text-center text-sm text-white/60 [animation-delay:200ms]">{song.artist}</p>
 
         {/* gelombang: tinggi tiap batang dari frekuensi musik yang sedang diputar */}
-        <div aria-hidden className="mx-auto mt-4 flex h-9 w-full items-end justify-center gap-[3px] text-primary">
+        <div aria-hidden className="song-in mx-auto mt-3 flex h-9 w-full items-end justify-center gap-[3px] text-primary [animation-delay:240ms] [filter:drop-shadow(0_0_6px_rgba(79,107,255,0.55))]">
           {Array.from({ length: BARS }).map((_, i) => (
             <span
               key={i}
@@ -624,7 +679,7 @@ export function SongModal({
 
         </div>
         <div>
-        <div className="mt-3">
+        <div className="song-in mt-3 [animation-delay:300ms]">
           {failed ? (
             <p className="text-center text-xs text-white/50">Preview tidak bisa dimuat.</p>
           ) : (
@@ -667,7 +722,7 @@ export function SongModal({
                 <span>{fmt(time)}</span>
                 <span>{fmt(duration)}</span>
               </div>
-              <div className="mt-2 flex items-center justify-center gap-2 sm:gap-4">
+              <div className="mt-3 flex items-center justify-center gap-4 sm:gap-6">
                 <button
                   type="button"
                   onClick={() => seek(Math.max(0, time - 5))}
@@ -704,31 +759,19 @@ export function SongModal({
                     <path d="M13 6v12l8.5-6L13 6ZM3 6v12l8.5-6L3 6Z" />
                   </svg>
                 </button>
-                <button
-                  type="button"
-                  onClick={() => setMuted((m) => !m)}
-                  aria-label={muted ? "Aktifkan suara" : "Bisukan"}
-                  aria-pressed={muted}
-                  className="focus-ring grid h-11 w-11 place-items-center rounded-full text-white/70 transition-colors hover:bg-white/10 hover:text-white"
-                >
-                  <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-                    <path d="M4 9v6h4l5 4V5L8 9H4Z" fill="currentColor" />
-                    {muted ? <path d="m17 9 5 6m0-6-5 6" /> : <path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12" />}
-                  </svg>
-                </button>
               </div>
             </>
           )}
         </div>
 
         {hasSynced ? (
-          <div className="mt-4">
+          <div className="song-in mt-4 [animation-delay:380ms]">
             <div
               ref={lyricBoxRef}
               onTouchStart={() => (touchedAt.current = Date.now())}
               onWheel={() => (touchedAt.current = Date.now())}
               aria-label="Lirik"
-              className="relative h-32 overflow-y-auto overscroll-contain rounded-2xl border border-white/10 bg-white/5 px-3 py-12 text-center [mask-image:linear-gradient(to_bottom,transparent,black_28%,black_72%,transparent)] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+              className="relative h-[clamp(7rem,18dvh,10rem)] overflow-y-auto overscroll-contain rounded-2xl border border-white/10 bg-white/5 px-3 py-12 text-center [mask-image:linear-gradient(to_bottom,transparent,black_28%,black_72%,transparent)] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
             >
               {synced.map((l, i) => (
                 <button
@@ -745,7 +788,7 @@ export function SongModal({
                     l.music
                       ? ""
                       : i === active
-                        ? "text-base font-bold text-white"
+                        ? "text-base font-bold text-white [text-shadow:0_0_18px_rgba(124,92,255,0.65)]"
                         : "text-sm font-medium text-white/35 hover:text-white/60"
                   }`}
                 >

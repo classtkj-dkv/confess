@@ -243,6 +243,81 @@ main > * {
   }
 }
 
+@keyframes song-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes song-ring {
+  0% {
+    transform: scale(0.8);
+    opacity: 0.45;
+  }
+  100% {
+    transform: scale(1.55);
+    opacity: 0;
+  }
+}
+
+@keyframes song-breathe {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.03);
+  }
+}
+
+@keyframes song-drift {
+  from {
+    transform: scale(1.25) translate3d(-2%, -1%, 0);
+  }
+  to {
+    transform: scale(1.4) translate3d(2%, 2%, 0);
+  }
+}
+
+@keyframes song-marquee {
+  0%,
+  12% {
+    transform: translateX(0);
+  }
+  50%,
+  62% {
+    transform: translateX(var(--shift, 0px));
+  }
+  100% {
+    transform: translateX(0);
+  }
+}
+
+.song-in {
+  animation: song-in 0.6s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+
+.song-ring {
+  animation: song-ring 3.2s ease-out infinite;
+}
+
+.song-breathe {
+  animation: song-breathe 5s ease-in-out infinite;
+}
+
+.song-drift {
+  animation: song-drift 28s ease-in-out infinite alternate;
+}
+
+.song-marquee {
+  animation: song-marquee 12s ease-in-out infinite;
+}
+
 .vinyl-disc {
   /* 1 putaran per 30 detik: pelan & tenang, tidak pusing. */
   animation: vinyl-spin 30s linear infinite;
