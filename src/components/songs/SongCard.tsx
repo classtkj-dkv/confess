@@ -532,9 +532,10 @@ export function SongModal({
           alt=""
           aria-hidden
           referrerPolicy="no-referrer"
-          className="pointer-events-none absolute inset-0 h-full w-full scale-125 object-cover opacity-40 blur-3xl"
+          className="pointer-events-none absolute inset-0 h-full w-full scale-125 object-cover opacity-55 blur-3xl"
         />
       )}
+      <div aria-hidden className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/30 via-transparent to-black/65" />
       <div
         role="dialog"
         aria-modal="true"
@@ -561,43 +562,54 @@ export function SongModal({
           {playing ? "Sedang diputar" : "Preview lagu"}
         </p>
 
-        {/* piringan hitam berputar dengan sampul di tengah */}
-        <div className="relative mx-auto mt-5 aspect-square w-[clamp(8rem,min(46vw,30dvh),14rem)]">
+        {/* sampul album; piringan hitam keluar dari sampul saat lagu diputar */}
+        <div
+          className="relative mx-auto mt-5"
+          style={{
+            ["--s" as string]: "clamp(8.5rem, min(50vw, 30dvh), 14rem)",
+            width: "calc(var(--s) * 1.3)",
+            height: "var(--s)",
+          }}
+        >
           <div
             aria-hidden
-            className={`absolute -inset-4 rounded-full bg-gradient-to-br from-primary to-secondary blur-2xl transition-opacity duration-700 ${
-              playing ? "opacity-60" : "opacity-25"
+            className={`absolute inset-x-[6%] -bottom-3 top-4 rounded-full bg-gradient-to-br from-primary to-secondary blur-3xl transition-opacity duration-700 ${
+              playing ? "opacity-50" : "opacity-20"
             }`}
           />
           <div
-            className="vinyl-disc relative h-full w-full rounded-full shadow-[0_20px_50px_rgba(0,0,0,0.55)]"
-            style={{ animationPlayState: playing ? "running" : "paused" }}
+            className="absolute top-0 transition-[left] duration-700 ease-out"
+            style={{
+              left: playing ? "calc(var(--s) * 0.3)" : "calc(var(--s) * 0.1)",
+              width: "var(--s)",
+              height: "var(--s)",
+            }}
           >
-            <div className="absolute inset-0 rounded-full bg-[repeating-radial-gradient(circle_at_center,#0a0a0f_0,#0a0a0f_2px,#15151d_3px,#0a0a0f_4px)]" />
-            <div className="absolute inset-0 rounded-full bg-[conic-gradient(from_30deg,transparent_0deg,rgba(255,255,255,0.12)_40deg,transparent_90deg,transparent_180deg,rgba(255,255,255,0.1)_220deg,transparent_270deg)]" />
-            <div className="absolute inset-[27%] overflow-hidden rounded-full ring-4 ring-black/70 [&>*]:!h-full [&>*]:!w-full [&>*]:!rounded-none">
-              <SongCover song={song} size={240} />
+            <div
+              className="vinyl-disc relative h-full w-full rounded-full shadow-[0_18px_44px_rgba(0,0,0,0.55)]"
+              style={{ animationPlayState: playing ? "running" : "paused" }}
+            >
+              <div className="absolute inset-0 rounded-full bg-[repeating-radial-gradient(circle_at_center,#0a0a0f_0,#0a0a0f_2px,#15151d_3px,#0a0a0f_4px)]" />
+              <div className="absolute inset-0 rounded-full bg-[conic-gradient(from_30deg,transparent_0deg,rgba(255,255,255,0.14)_40deg,transparent_90deg,transparent_180deg,rgba(255,255,255,0.1)_220deg,transparent_270deg)]" />
+              <div className="absolute inset-[34%] overflow-hidden rounded-full ring-2 ring-black/70 [&>*]:!h-full [&>*]:!w-full [&>*]:!rounded-none">
+                <SongCover song={song} size={120} />
+              </div>
+              <span className="absolute left-1/2 top-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#0b0f1d] ring-2 ring-white/25" />
             </div>
-            <span className="absolute left-1/2 top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#0c1020] ring-2 ring-white/20" />
           </div>
-          <svg
-            aria-hidden
-            viewBox="0 0 100 100"
-            className={`pointer-events-none absolute -right-[10%] -top-[10%] h-[60%] w-[60%] origin-[82%_14%] transition-transform duration-700 ease-out ${
-              playing ? "rotate-[12deg]" : "-rotate-[12deg]"
-            }`}
+          <div
+            className="absolute left-0 top-0 overflow-hidden rounded-2xl shadow-[0_18px_40px_rgba(0,0,0,0.5)] ring-1 ring-white/15 [&>*]:!h-full [&>*]:!w-full [&>*]:!rounded-none"
+            style={{ width: "var(--s)", height: "var(--s)" }}
           >
-            <circle cx="82" cy="14" r="7" fill="#2a2f45" stroke="rgba(255,255,255,.25)" />
-            <path d="M82 14 L44 64" stroke="rgba(255,255,255,.75)" strokeWidth="3" strokeLinecap="round" />
-            <rect x="36" y="62" width="14" height="8" rx="2" transform="rotate(-38 43 66)" fill="rgba(255,255,255,.9)" />
-          </svg>
+            <SongCover song={song} size={320} />
+          </div>
         </div>
 
-        <p className="mt-4 truncate text-center text-xl font-extrabold tracking-tight">{song.title}</p>
+        <p className="mt-6 truncate text-center text-xl font-bold tracking-tight sm:text-2xl">{song.title}</p>
         <p className="truncate text-center text-sm text-white/60">{song.artist}</p>
 
         {/* gelombang: tinggi tiap batang dari frekuensi musik yang sedang diputar */}
-        <div aria-hidden className="mx-auto mt-3 flex h-8 w-full items-end justify-center gap-[3px] text-primary">
+        <div aria-hidden className="mx-auto mt-4 flex h-9 w-full items-end justify-center gap-[3px] text-primary">
           {Array.from({ length: BARS }).map((_, i) => (
             <span
               key={i}
@@ -670,7 +682,7 @@ export function SongModal({
                   type="button"
                   onClick={toggle}
                   aria-label={playing ? "Jeda" : "Putar"}
-                  className="focus-ring grid h-16 w-16 place-items-center rounded-full bg-white text-[#0c1020] shadow-[0_10px_30px_rgba(79,107,255,0.55)] transition-transform duration-200 hover:scale-105 active:scale-95"
+                  className="focus-ring grid h-16 w-16 place-items-center rounded-full bg-white ring-8 ring-white/10 text-[#0c1020] shadow-[0_10px_30px_rgba(79,107,255,0.55)] transition-transform duration-200 hover:scale-105 active:scale-95"
                 >
                   {playing ? (
                     <svg viewBox="0 0 24 24" className="h-6 w-6" fill="currentColor" aria-hidden>

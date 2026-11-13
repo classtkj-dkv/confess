@@ -201,9 +201,17 @@ main > * {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  /* Animasi sekali jalan saja. JANGAN biarkan animasi infinite berdurasi
+     0.01ms — itu membuat piringan berputar sangat kencang di HP hemat baterai. */
   * {
     animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+  }
+  /* Piringan tetap berputar, tapi lebih pelan lagi (45 detik/putaran). */
+  .vinyl-disc {
+    animation-duration: 45s !important;
+    animation-iteration-count: infinite !important;
   }
 }
 
