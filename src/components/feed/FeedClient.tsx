@@ -145,7 +145,7 @@ export function FeedClient() {
   }
 
   return (
-    <div className="space-y-5">
+    <div className="mx-auto w-full max-w-3xl space-y-5">
       <header className="space-y-2">
         <h1 className="page-title">
           {searchParam

@@ -9,7 +9,7 @@ export function Sidebar() {
   const pathname = usePathname();
 
   return (
-    <aside className="sticky top-0 hidden h-dvh w-64 shrink-0 flex-col border-r border-hairline bg-surface/70 px-4 py-6 backdrop-blur-xl md:flex">
+    <aside className="sticky top-0 hidden h-dvh w-64 shrink-0 flex-col overflow-y-auto border-r border-hairline bg-surface/70 px-4 py-6 backdrop-blur-xl lg:flex">
       <Link href="/" className="focus-ring mb-8 rounded-xl px-2 py-1" aria-label="CONFESS — Beranda">
         <SidebarLogo />
       </Link>

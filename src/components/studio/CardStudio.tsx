@@ -2776,7 +2776,7 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
   const canUndo = hist.current.past.length > 0 || JSON.stringify(design) !== hist.current.last;
 
   return createPortal(
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 sm:p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 pt-[env(safe-area-inset-top)] sm:p-4" onClick={onClose}>
       <div
         role="dialog"
         aria-modal="true"
@@ -2815,7 +2815,7 @@ function CardStudio({ data, onClose }: { data: StudioData; onClose: () => void }
         <div className="grid flex-1 md:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)]">
           {/* ── pratinjau ── */}
           <div
-            className="sticky top-0 z-20 border-b border-hairline bg-card [--ph:40vh] md:top-2 md:z-auto md:self-start md:border-b-0 md:[--ph:62vh]"
+            className="sticky top-0 z-20 border-b border-hairline bg-card [--ph:40dvh] md:top-2 md:z-auto md:self-start md:border-b-0 md:[--ph:62dvh]"
             {...dropHandlers}
           >
             <div className="flex items-center gap-1 px-3 pt-2">

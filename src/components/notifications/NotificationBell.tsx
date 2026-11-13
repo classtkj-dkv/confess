@@ -31,7 +31,7 @@ export function NotificationBell() {
     <Link
       href="/notifications"
       aria-label={unread > 0 ? `Notifikasi, ${unread} belum dibaca` : "Notifikasi"}
-      className="focus-ring relative grid h-9 w-9 place-items-center rounded-full border border-hairline bg-surface/70 text-ink transition-colors hover:bg-ink/5"
+      className="icon-btn"
     >
       <Icon name="bell" className="h-4 w-4" />
       {unread > 0 && (

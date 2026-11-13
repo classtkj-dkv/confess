@@ -10,7 +10,7 @@ export function ThemeToggle() {
     <button
       onClick={toggleTheme}
       aria-label={isDark ? "Ganti ke mode terang" : "Ganti ke mode gelap"}
-      className="focus-ring grid h-9 w-9 place-items-center rounded-full border border-hairline bg-surface/70 text-ink transition-colors hover:bg-ink/5"
+      className="icon-btn"
     >
       {isDark ? (
         <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>

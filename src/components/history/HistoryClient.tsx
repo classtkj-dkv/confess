@@ -107,7 +107,7 @@ export function HistoryClient() {
   }
 
   return (
-    <div className="space-y-5">
+    <div className="mx-auto w-full max-w-3xl space-y-5">
       <header className="flex flex-wrap items-end gap-3">
         <div className="space-y-2">
           <h1 className="page-title">Riwayat confess</h1>

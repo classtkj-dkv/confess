@@ -301,7 +301,7 @@ export function AdminClient() {
 
       <div className="flex min-w-0 flex-1 flex-col">
         {/* Top bar mobile */}
-        <header className="sticky top-0 z-30 border-b border-hairline bg-surface/95 backdrop-blur lg:hidden">
+        <header className="sticky top-0 z-30 border-b border-hairline bg-surface/95 pt-[env(safe-area-inset-top)] backdrop-blur lg:hidden">
           <div className="flex items-center gap-2.5 px-4 py-3">
             <span className="grid h-8 w-8 place-items-center rounded-lg bg-primary text-white">
               <Icon name="shield" className="h-4 w-4" />

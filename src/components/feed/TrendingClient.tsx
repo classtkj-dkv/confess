@@ -40,7 +40,7 @@ export function TrendingClient() {
   }, [days]);
 
   return (
-    <div className="space-y-5">
+    <div className="mx-auto w-full max-w-3xl space-y-5">
       <header className="flex items-end justify-between gap-3">
         <div>
           <h1 className="page-title flex items-center gap-2">

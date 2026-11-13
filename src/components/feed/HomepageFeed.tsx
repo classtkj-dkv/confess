@@ -34,7 +34,7 @@ export function HomepageFeed() {
 
   if (status === "loading") {
     return (
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid gap-4 md:grid-cols-2">
         {Array.from({ length: FEED_PAGE_SIZE }).map((_, i) => (
           <CardSkeleton key={i} />
         ))}
@@ -68,7 +68,7 @@ export function HomepageFeed() {
   }
 
   return (
-    <div className="grid gap-4 lg:grid-cols-2">
+    <div className="grid gap-4 md:grid-cols-2">
       {items.map((c) => (
         <ConfessionCard key={c.id} confession={c} compact />
       ))}

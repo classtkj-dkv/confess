@@ -133,7 +133,7 @@ export function ConfessionDetailClient() {
   }
 
   return (
-    <div className="space-y-5">
+    <div className="mx-auto w-full max-w-3xl space-y-5">
       <ConfessionCard confession={confession} />
 
       <section aria-labelledby="comments" className="card p-5">

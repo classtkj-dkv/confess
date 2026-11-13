@@ -54,6 +54,9 @@ body {
 }
 
 body {
+  /* Aman untuk notch/punch-hole saat landscape (viewport-fit=cover). */
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
   overflow-wrap: anywhere;
   background: rgb(var(--c-bg));
   color: rgb(var(--c-text));
@@ -119,7 +122,12 @@ body {
   }
 
   .input {
-    @apply focus-ring block w-full rounded-xl border border-hairline bg-surface px-4 py-2.5 text-sm text-ink transition-colors placeholder:text-muted/80 hover:border-[color:var(--c-border-strong)] focus-visible:border-primary/60 disabled:opacity-60;
+    @apply focus-ring block w-full rounded-xl border border-hairline bg-surface px-4 py-2.5 text-base text-ink transition-colors placeholder:text-muted/80 sm:text-sm hover:border-[color:var(--c-border-strong)] focus-visible:border-primary/60 disabled:opacity-60;
+  }
+
+  /* Tombol ikon bulat di header: 40px di HP (target sentuh nyaman), 36px di sm+ */
+  .icon-btn {
+    @apply focus-ring relative grid h-10 w-10 shrink-0 place-items-center rounded-full border border-hairline bg-surface/70 text-ink transition-colors hover:bg-ink/5 sm:h-9 sm:w-9;
   }
 
   .label {
@@ -364,4 +372,14 @@ main > * {
   border: 0;
   border-radius: 50%;
   background: rgb(var(--c-text));
+}
+
+/* iOS Safari memperbesar halaman otomatis bila font field < 16px saat fokus.
+   Di perangkat sentuh, semua field dipaksa 16px agar layar tidak "loncat". */
+@media (pointer: coarse) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="button"]):not([type="submit"]):not([type="reset"]),
+  select,
+  textarea {
+    font-size: 16px;
+  }
 }

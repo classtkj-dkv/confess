@@ -62,20 +62,20 @@ export function AppShell({ children }: AppShellProps) {
     <div className="flex min-h-dvh">
       <Sidebar />
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="glass-panel sticky top-0 z-30 border-x-0 border-t-0 border-b border-hairline">
+        <header className="glass-panel sticky top-0 z-30 border-x-0 border-t-0 border-b border-hairline pt-[env(safe-area-inset-top)]">
           <AnnouncementBanner />
-          <div className="mx-auto flex max-w-5xl items-center gap-3 px-4 py-2.5 md:px-6">
+          <div className="mx-auto flex max-w-5xl items-center gap-2 px-4 py-2.5 sm:gap-3 md:px-6 2xl:max-w-6xl">
             <Link
               href="/"
-              className="focus-ring rounded-lg md:hidden"
+              className="focus-ring shrink-0 rounded-lg lg:hidden"
               aria-label="CONFESS — Beranda"
             >
               <Logo compact />
             </Link>
-            <div className="hidden flex-1 md:flex md:max-w-md">
+            <div className="hidden min-w-0 flex-1 md:flex md:max-w-md">
               <SearchBar />
             </div>
-            <div className="ml-auto flex items-center gap-2">
+            <div className="ml-auto flex shrink-0 items-center gap-1.5 sm:gap-2">
               {pathname !== "/" && (
                 <Link
                   href="/confess"
@@ -90,7 +90,7 @@ export function AppShell({ children }: AppShellProps) {
             </div>
           </div>
         </header>
-        <main className="mx-auto w-full max-w-5xl flex-1 px-4 pb-28 pt-6 md:px-6 md:pb-14 md:pt-8">
+        <main className="mx-auto w-full max-w-5xl flex-1 px-4 pb-28 pt-6 md:px-6 md:pt-8 lg:pb-14 2xl:max-w-6xl">
           <InstallPrompt />
           {children}
         </main>

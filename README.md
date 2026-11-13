@@ -251,3 +251,14 @@ Keputusan AI tersimpan di data privat (`confessions/{id}/moderation`). Komentar 
 - Ajakan pasang muncul di atas konten (Android/Chrome: tombol "Pasang sekarang"; iOS Safari: petunjuk Bagikan →
   Tambah ke Layar Utama), disembunyikan 14 hari setelah ditutup.
 - Untuk uji: `npm run build && npm start`, lalu buka di Chrome → DevTools → Application → Manifest / Service Workers.
+
+## Responsif (HP, tablet, laptop, PC)
+- Breakpoint navigasi: **< 1024px** (HP + tablet portrait) memakai header + bottom-nav; **≥ 1024px** memakai sidebar.
+  Pencarian di header muncul mulai 768px (di HP ada di beranda).
+- Konten dibatasi lebar baca (`max-w-3xl`) untuk feed, trending, detail, notifikasi, dan riwayat; beranda 2 kolom mulai 768px;
+  kontainer utama melebar sedikit di layar ≥ 1536px.
+- Semua field form dipaksa 16px di perangkat sentuh supaya iOS Safari tidak memperbesar halaman saat fokus (`globals.css`).
+- Safe-area (notch/punch-hole/status bar PWA): header publik, header admin, bottom-nav, modal Card Studio, dan sisi kiri/kanan
+  saat landscape.
+- Tombol ikon header 40px di HP (target sentuh nyaman), 36px di layar lebih lebar (`.icon-btn`).
+- Tinggi yang bergantung bar URL browser HP memakai `dvh`, bukan `vh`.
