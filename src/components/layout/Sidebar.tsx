@@ -33,22 +33,6 @@ export function Sidebar() {
             </Link>
           );
         })}
-        <div className="my-3 border-t border-hairline" />
-        <Link
-          href="/confess"
-          className="focus-ring flex items-center gap-3 rounded-xl bg-primary/10 px-3 py-2.5 text-sm font-semibold text-primary transition-colors hover:bg-primary/20"
-          aria-label="Tulis confession baru"
-        >
-          <NavIcon name="feed" />
-          Tulis Confess
-        </Link>
-        <Link
-          href="/admin"
-          className="focus-ring mt-1 flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-muted hover:bg-ink/5 hover:text-ink"
-        >
-          <NavIcon name="admin" />
-          Admin
-        </Link>
       </nav>
       <p className="rounded-xl border border-hairline bg-card/60 px-3 py-2.5 text-[11px] leading-relaxed text-muted">
         Tanpa nama. Tanpa beban. Tetap jaga keamanan bersama.

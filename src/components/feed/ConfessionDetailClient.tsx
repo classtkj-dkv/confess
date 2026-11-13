@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import { useParams } from "next/navigation";
 import { ConfessionCard } from "@/components/feed/ConfessionCard";
 import { Icon } from "@/components/ui/Icon";
@@ -20,7 +19,7 @@ export function ConfessionDetailClient() {
   const params = useParams<{ id: string }>();
   const id = typeof params?.id === "string" ? params.id : "";
   const { toast } = useToast();
-  const { configured, isAdmin } = useAuth();
+  const { configured } = useAuth();
 
   const [confession, setConfession] = useState<Confession | null>(null);
   const [comments, setComments] = useState<ConfessionComment[]>([]);
@@ -218,16 +217,6 @@ export function ConfessionDetailClient() {
               </li>
             ))}
           </ul>
-        )}
-
-        {isAdmin && (
-          <p className="mt-4 rounded-xl bg-warning/10 p-3 text-xs text-ink">
-            Kamu login sebagai admin — komentar termoderasi bisa diatur dari{" "}
-            <Link href="/admin/comments" className="font-semibold underline">
-              dashboard admin
-            </Link>
-            .
-          </p>
         )}
       </section>
     </div>

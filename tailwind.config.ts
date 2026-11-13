@@ -29,7 +29,7 @@ const config: Config = {
       boxShadow: {
         soft: "var(--shadow-soft)",
         lift: "var(--shadow-lift)",
-        glow: "0 8px 28px -6px rgba(79,107,255,0.55)",
+        glow: "0 1px 2px rgba(0,0,0,0.12)",
       },
       borderRadius: {
         xl: "1rem",

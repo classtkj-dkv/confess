@@ -7,35 +7,24 @@ import { Icon } from "@/components/ui/Icon";
 
 export function HeroSection() {
   return (
-    <section className="relative overflow-hidden rounded-3xl border border-hairline bg-card p-6 shadow-soft sm:p-12">
-      <div
-        aria-hidden
-        className="pointer-events-none absolute -right-20 -top-28 h-72 w-72 rounded-full bg-primary/25 blur-3xl"
-      />
-      <div
-        aria-hidden
-        className="pointer-events-none absolute -bottom-32 -left-16 h-72 w-72 rounded-full bg-secondary/20 blur-3xl"
-      />
+    <section className="rounded-2xl border border-hairline bg-card p-6 sm:p-10">
       <div className="relative max-w-xl">
         <span className="badge border-primary/25 bg-primary/10 !text-primary">
           <Icon name="eyeoff" className="h-3.5 w-3.5" /> 100% anonim
         </span>
-        <h1 className="mt-5 text-3xl font-extrabold leading-[1.1] tracking-tight text-ink sm:text-5xl">
+        <h1 className="mt-5 text-3xl font-bold leading-tight tracking-tight text-ink sm:text-4xl">
           Ceritakan apa yang ada di{" "}
           <span className="text-gradient">pikiranmu</span>.
         </h1>
-        <p className="mt-4 text-sm leading-relaxed text-muted sm:text-lg">
+        <p className="mt-4 text-sm leading-relaxed text-muted sm:text-base">
           Satu sekolah, ribuan cerita, tanpa perlu diketahui siapa kamu.
         </p>
         <div className="mt-7 flex flex-col gap-3 sm:flex-row sm:items-center">
           <Link href="/confess" className="btn-primary sm:w-auto">
             <Icon name="pencil" className="mr-1.5 h-4 w-4" /> Tulis Confess
           </Link>
-          <Link href="/feed" className="btn-ghost sm:w-auto">
-            Lihat feed
-          </Link>
         </div>
-        <div className="mt-7 max-w-sm">
+        <div className="mt-6 max-w-sm md:hidden">
           <SearchBar />
         </div>
       </div>

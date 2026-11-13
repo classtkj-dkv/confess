@@ -4,15 +4,13 @@ import { CATEGORIES } from "@/lib/categories";
 import { HeroSection, CategoryStrip } from "@/components/feed/HomeSections";
 import { HomepageFeed } from "@/components/feed/HomepageFeed";
 
-import { Logo } from "@/components/ui/Logo";
-
 export const metadata: Metadata = {
   title: "CONFESS — Ceritakan apa yang ada di pikiranmu",
 };
 
 export default function HomePage() {
   return (
-    <div className="space-y-12">
+    <div className="space-y-10">
       <HeroSection />
 
       <section aria-labelledby="feed-title" className="space-y-4">
@@ -33,18 +31,6 @@ export default function HomePage() {
       </section>
 
       <CategoryStrip categories={CATEGORIES} />
-
-      <section className="card flex flex-col items-start gap-4 bg-gradient-to-br from-primary/10 to-secondary/10 p-6 sm:flex-row sm:items-center">
-        <Logo />
-        <p className="text-sm text-muted">
-          Berbagi cerita secara anonim di lingkungan sekolah. Semua confession
-          melewati moderasi sebelum tampil publik — jalur yang bisa aman untuk
-          semua orang.
-        </p>
-        <Link href="/about" className="btn-ghost ml-auto shrink-0">
-          Tentang CONFESS
-        </Link>
-      </section>
     </div>
   );
 }

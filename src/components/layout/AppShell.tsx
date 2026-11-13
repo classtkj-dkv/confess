@@ -4,7 +4,6 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Logo } from "@/components/ui/Logo";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
-import { NavIcon } from "./NavIcon";
 import { Sidebar } from "./Sidebar";
 import { MobileNav } from "./MobileNav";
 import { SearchBar } from "./SearchBar";
@@ -20,6 +19,9 @@ export function AppShell({ children }: AppShellProps) {
   const pathname = usePathname();
   const { settings } = useSettings();
   const { isAdmin, loading } = useAuth();
+
+  // Panel admin punya shell sendiri — tidak memakai navigasi publik.
+  if (pathname.startsWith("/admin")) return <>{children}</>;
 
   // Maintenance realtime: semua halaman publik langsung berganti halaman
   // perawatan; staff & halaman /admin tetap bisa diakses.
@@ -71,30 +73,15 @@ export function AppShell({ children }: AppShellProps) {
               <SearchBar />
             </div>
             <div className="ml-auto flex items-center gap-2">
-              <Link
-                href="/confess"
-                className="btn-primary hidden !rounded-full !px-5 !py-2 text-xs md:inline-flex"
-              >
-                Tulis Confess
-              </Link>
-              <div className="hidden md:block">
-                <ThemeToggle />
-              </div>
-              <Link
-                href="/about"
-                aria-label="Tentang CONFESS"
-                className={`focus-ring grid h-9 w-9 place-items-center rounded-full border border-hairline transition-colors ${
-                  pathname === "/about"
-                    ? "bg-primary/15 text-primary"
-                    : "bg-surface text-muted md:hidden"
-                }`}
-                title="Tentang"
-              >
-                <NavIcon name="about" className="h-4 w-4" />
-              </Link>
-              <div className="md:hidden">
-                <ThemeToggle />
-              </div>
+              {pathname !== "/" && (
+                <Link
+                  href="/confess"
+                  className="btn-primary hidden !rounded-full !px-5 !py-2 text-xs md:inline-flex"
+                >
+                  Tulis Confess
+                </Link>
+              )}
+              <ThemeToggle />
             </div>
           </div>
         </header>

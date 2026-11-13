@@ -7,6 +7,8 @@ import { isAdminRole } from "@/lib/auth/roles";
 import type { Song, UserRole } from "@/types";
 import { SongCard } from "@/components/songs/SongCard";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { api, ApiClientError } from "@/lib/api";
 import { useAuth } from "@/lib/auth/AuthProvider";
 import { useToast } from "@/lib/auth/ToastProvider";
@@ -30,18 +32,26 @@ type Tab =
   | "settings"
   | "audit";
 
-const TABS: readonly { id: Tab; label: string; icon: IconName }[] = [
-  { id: "overview", label: "Overview", icon: "chart" },
-  { id: "moderation", label: "Moderation", icon: "shield" },
-  { id: "confessions", label: "Confessions", icon: "pencil" },
-  { id: "comments", label: "Comments", icon: "message" },
-  { id: "reports", label: "Reports", icon: "flag" },
-  { id: "users", label: "Users", icon: "users" },
-  { id: "ips", label: "IP Log", icon: "globe" },
-  { id: "categories", label: "Categories", icon: "grid" },
-  { id: "announcements", label: "Announcements", icon: "megaphone" },
-  { id: "settings", label: "Settings", icon: "sliders" },
-  { id: "audit", label: "Audit Log", icon: "file" },
+interface TabMeta {
+  id: Tab;
+  label: string;
+  icon: IconName;
+  group: string;
+  desc: string;
+}
+
+const TABS: readonly TabMeta[] = [
+  { id: "overview", label: "Ringkasan", icon: "chart", group: "Utama", desc: "Statistik aktivitas CONFESS secara realtime." },
+  { id: "moderation", label: "Moderasi", icon: "shield", group: "Konten", desc: "Confession yang menunggu persetujuan." },
+  { id: "confessions", label: "Confession", icon: "pencil", group: "Konten", desc: "Semua confession beserta statusnya." },
+  { id: "comments", label: "Komentar", icon: "message", group: "Konten", desc: "Tinjau dan kelola komentar pengguna." },
+  { id: "reports", label: "Laporan", icon: "flag", group: "Konten", desc: "Laporan dari pengguna yang perlu ditindaklanjuti." },
+  { id: "users", label: "Pengguna", icon: "users", group: "Pengguna", desc: "Kelola akun, role, dan pemblokiran." },
+  { id: "ips", label: "Log IP", icon: "globe", group: "Pengguna", desc: "Pantau aktivitas dan alamat IP mencurigakan." },
+  { id: "categories", label: "Kategori", icon: "grid", group: "Sistem", desc: "Daftar kategori confession." },
+  { id: "announcements", label: "Pengumuman", icon: "megaphone", group: "Sistem", desc: "Banner pengumuman di seluruh situs." },
+  { id: "settings", label: "Pengaturan", icon: "sliders", group: "Sistem", desc: "Pengaturan situs, fitur, dan moderasi AI." },
+  { id: "audit", label: "Audit Log", icon: "file", group: "Sistem", desc: "Riwayat tindakan admin dan moderator." },
 ];
 
 /** Tab yang boleh dilihat moderator; sisanya admin/owner. */
@@ -119,10 +129,29 @@ interface AdminIpRow {
 }
 
 export function AdminClient() {
-  const { isAdmin, role, loading, configured, uid, isAnonymous } = useAuth();
+  const { isAdmin, role, loading, configured, uid, isAnonymous, signOutNow } = useAuth();
   const { toast } = useToast();
-  const [tab, setTab] = useState<Tab>("overview");
+  const pathname = usePathname();
+  const section = pathname.split("/")[2] ?? "";
+  const [tab, setTab] = useState<Tab>(
+    TABS.some((t) => t.id === section) ? (section as Tab) : "overview"
+  );
   const [tick, setTick] = useState(0);
+  const [stats, setStats] = useState<StatsShape | null>(null);
+  const [loadingStats, setLoadingStats] = useState(true);
+
+  const refreshStats = useCallback(async () => {
+    try {
+      const data = (await api("/api/admin/stats", {
+        method: "GET",
+      })) as unknown as StatsShape;
+      setStats(data);
+    } catch {
+      setStats(null);
+    } finally {
+      setLoadingStats(false);
+    }
+  }, []);
 
   // Realtime dashboard: server menaikkan meta/adminTick di setiap mutasi
   // (confession baru, aksi moderasi, perubahan role, …) → tab aktif dimuat ulang.
@@ -143,26 +172,57 @@ export function AdminClient() {
     return unsub;
   }, [isAdmin]);
 
+  useEffect(() => {
+    if (isAdmin) void refreshStats();
+  }, [isAdmin, tick, refreshStats]);
+
   const visibleTabs = TABS.filter(
     (t) => isAdminRole(role) || MODERATOR_TABS.includes(t.id)
   );
+  const groups = Array.from(new Set(visibleTabs.map((t) => t.group)));
+  const current = visibleTabs.find((t) => t.id === tab) ?? visibleTabs[0];
+
+  const badgeFor = (id: Tab): number =>
+    id === "moderation"
+      ? stats?.pendingConfessions ?? 0
+      : id === "reports"
+        ? stats?.openReports ?? 0
+        : 0;
 
   if (loading) {
-    return <div className="space-y-4">{StatSkeletonSkeletonList()}</div>;
+    return (
+      <div className="mx-auto w-full max-w-5xl space-y-4 px-4 py-10">
+        <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">{StatSkeletonSkeletonList()}</div>
+      </div>
+    );
   }
 
   if (!configured) {
     return (
-      <ErrorState
-        title="Firebase belum terkonfigurasi"
-        description="Isi NEXT_PUBLIC_FIREBASE_* dan FIREBASE_ADMIN_* environment variables terlebih dahulu."
-      />
+      <div className="mx-auto w-full max-w-2xl px-4 py-10">
+        <ErrorState
+          title="Firebase belum terkonfigurasi"
+          description="Isi NEXT_PUBLIC_FIREBASE_* dan FIREBASE_ADMIN_* environment variables terlebih dahulu."
+        />
+      </div>
     );
   }
 
   if (!isAdmin) {
     return (
-      <div className="space-y-6">
+      <div className="mx-auto w-full max-w-2xl space-y-6 px-4 py-10">
+        <div className="flex items-center gap-2.5">
+          <span className="grid h-9 w-9 place-items-center rounded-lg bg-primary text-white">
+            <Icon name="shield" className="h-[18px] w-[18px]" />
+          </span>
+          <div>
+            <p className="text-sm font-bold leading-tight text-ink">CONFESS Admin</p>
+            <p className="text-xs text-muted">Console pengelolaan</p>
+          </div>
+          <div className="ml-auto">
+            <ThemeToggle />
+          </div>
+        </div>
         <EmptyState
           icon="lock"
           title="Akses admin diperlukan"
@@ -180,34 +240,123 @@ export function AdminClient() {
     );
   }
 
+  const navButton = (t: TabMeta) => {
+    const active = tab === t.id;
+    const count = badgeFor(t.id);
+    return (
+      <button
+        key={t.id}
+        type="button"
+        aria-current={active ? "page" : undefined}
+        onClick={() => setTab(t.id)}
+        className={`focus-ring flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm font-medium transition-colors ${
+          active ? "bg-primary/10 text-primary" : "text-muted hover:bg-ink/5 hover:text-ink"
+        }`}
+      >
+        <Icon name={t.icon} className="h-4 w-4 shrink-0" />
+        <span className="flex-1 truncate">{t.label}</span>
+        {count > 0 && (
+          <span className="rounded-full bg-primary px-1.5 py-0.5 text-[10px] font-bold leading-none text-white tabular-nums">
+            {count > 99 ? "99+" : count}
+          </span>
+        )}
+      </button>
+    );
+  };
+
   return (
-    <div className="space-y-6">
-      <header>
-        <p className="badge border-primary/25 bg-primary/10 !text-primary">
-          <Icon name="shield" className="h-3.5 w-3.5" /> Kelola CONFESS
-        </p>
-        <h1 className="page-title mt-3">Admin Dashboard</h1>
-        <p className="page-lead mt-1.5">
-          Sesi: <strong className="font-mono">{shortUid(uid)}</strong> · role:{" "}
-          <RoleBadge role={role} />
-        </p>
-      </header>
+    <div className="flex min-h-dvh">
+      {/* Sidebar desktop */}
+      <aside className="sticky top-0 hidden h-dvh w-64 shrink-0 flex-col border-r border-hairline bg-surface lg:flex">
+        <div className="flex items-center gap-2.5 border-b border-hairline px-5 py-4">
+          <span className="grid h-9 w-9 place-items-center rounded-lg bg-primary text-white">
+            <Icon name="shield" className="h-[18px] w-[18px]" />
+          </span>
+          <div>
+            <p className="text-sm font-bold leading-tight text-ink">CONFESS Admin</p>
+            <p className="text-xs text-muted">Console pengelolaan</p>
+          </div>
+        </div>
+        <nav aria-label="Menu admin" className="flex-1 space-y-5 overflow-y-auto px-3 py-4">
+          {groups.map((g) => (
+            <div key={g}>
+              <p className="mb-1.5 px-3 text-[11px] font-semibold uppercase tracking-wider text-muted/80">{g}</p>
+              <div className="space-y-0.5">{visibleTabs.filter((t) => t.group === g).map(navButton)}</div>
+            </div>
+          ))}
+        </nav>
+        <div className="space-y-3 border-t border-hairline p-4">
+          <div className="flex items-center justify-between gap-2 text-xs text-muted">
+            <span className="font-mono">{shortUid(uid)}</span>
+            <RoleBadge role={role} />
+          </div>
+          <div className="flex items-center gap-2">
+            <button type="button" onClick={() => void signOutNow()} className="btn-ghost flex-1 !py-2 text-xs">
+              Keluar
+            </button>
+            <ThemeToggle />
+          </div>
+        </div>
+      </aside>
 
-      <div role="toolbar" aria-label="Menu admin" className="card flex gap-1.5 overflow-x-auto p-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        {visibleTabs.map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            aria-pressed={tab === t.id}
-            onClick={() => setTab(t.id)}
-            className="chip px-3.5 py-1.5 text-xs font-semibold"
+      <div className="flex min-w-0 flex-1 flex-col">
+        {/* Top bar mobile */}
+        <header className="sticky top-0 z-30 border-b border-hairline bg-surface/95 backdrop-blur lg:hidden">
+          <div className="flex items-center gap-2.5 px-4 py-3">
+            <span className="grid h-8 w-8 place-items-center rounded-lg bg-primary text-white">
+              <Icon name="shield" className="h-4 w-4" />
+            </span>
+            <p className="text-sm font-bold text-ink">CONFESS Admin</p>
+            <div className="ml-auto flex items-center gap-2">
+              <button type="button" onClick={() => void signOutNow()} className="btn-ghost !px-3 !py-1.5 text-xs">
+                Keluar
+              </button>
+              <ThemeToggle />
+            </div>
+          </div>
+          <div
+            role="toolbar"
+            aria-label="Menu admin"
+            className="flex gap-1.5 overflow-x-auto px-4 pb-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
           >
-            <Icon name={t.icon} className="mr-1 inline h-3.5 w-3.5 align-[-2px]" /> {t.label}
-          </button>
-        ))}
-      </div>
+            {visibleTabs.map((t) => {
+              const count = badgeFor(t.id);
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  aria-pressed={tab === t.id}
+                  onClick={() => setTab(t.id)}
+                  className="chip flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold"
+                >
+                  {t.label}
+                  {count > 0 && (
+                    <span className="rounded-full bg-primary px-1.5 text-[10px] font-bold leading-4 text-white">
+                      {count > 99 ? "99+" : count}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </header>
 
-      <AdminSection tab={tab} toast={toast} tick={tick} role={role} />
+        <main className="mx-auto w-full max-w-6xl flex-1 space-y-6 px-4 py-6 lg:px-8 lg:py-8">
+          <div>
+            <h1 className="text-xl font-bold tracking-tight text-ink sm:text-2xl">{current.label}</h1>
+            <p className="mt-1 text-sm text-muted">{current.desc}</p>
+          </div>
+          <AdminSection
+            tab={tab}
+            toast={toast}
+            tick={tick}
+            role={role}
+            stats={stats}
+            loadingStats={loadingStats}
+            refreshStats={refreshStats}
+          />
+        </main>
+      </div>
     </div>
   );
 }
@@ -227,27 +376,18 @@ function AdminSection({
   toast,
   tick,
   role,
+  stats,
+  loadingStats,
+  refreshStats,
 }: {
   tab: Tab;
   toast: ReturnType<typeof useToast>["toast"];
   tick: number;
   role: UserRole;
+  stats: StatsShape | null;
+  loadingStats: boolean;
+  refreshStats: () => Promise<void>;
 }) {
-  const [stats, setStats] = useState<StatsShape | null>(null);
-  const [loadingStats, setLoadingStats] = useState(true);
-
-  const refreshStats = useCallback(async () => {
-    try {
-      const data = (await api("/api/admin/stats", {
-        method: "GET",
-      })) as unknown as StatsShape;
-      setStats(data);
-    } catch {
-      setStats(null);
-    } finally {
-      setLoadingStats(false);
-    }
-  }, []);
 
   const onAction = useCallback(
     async (type: string, id: string) => {
@@ -263,10 +403,6 @@ function AdminSection({
     },
     [refreshStats, toast]
   );
-
-  useEffect(() => {
-    if (tab === "overview") void refreshStats();
-  }, [tab, refreshStats, tick]);
 
   // Moderator tidak boleh membuka tab admin walau state lama menunjuk ke sana.
   if (!isAdminRole(role) && !MODERATOR_TABS.includes(tab)) return null;
@@ -341,13 +477,7 @@ function StatCard({
   accent?: boolean;
 }) {
   return (
-    <div className="card card-interactive relative overflow-hidden p-4 sm:p-5" data-accent={accent ? "1" : undefined}>
-      {accent && (
-        <span
-          aria-hidden
-          className="absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r from-primary to-secondary"
-        />
-      )}
+    <div className="card p-4 sm:p-5" data-accent={accent ? "1" : undefined}>
       <div className="flex items-center justify-between gap-2">
         <p className="text-xs font-medium text-muted">{label}</p>
         <span
@@ -360,7 +490,7 @@ function StatCard({
         </span>
       </div>
       <p
-        className={`mt-3 text-3xl font-extrabold tracking-tight tabular-nums ${accent ? "text-gradient" : "text-ink"}`}
+        className={`mt-3 text-3xl font-bold tracking-tight tabular-nums ${accent ? "text-primary" : "text-ink"}`}
       >
         {formatNumber(value)}
       </p>

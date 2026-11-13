@@ -61,18 +61,6 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* Latar halus bergradasi di belakang konten */
-body::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  z-index: -1;
-  pointer-events: none;
-  background:
-    radial-gradient(900px 500px at 85% -10%, var(--aurora-a), transparent 60%),
-    radial-gradient(700px 420px at -5% 105%, var(--aurora-b), transparent 60%);
-}
-
 ::selection {
   background: rgba(79, 107, 255, 0.35);
 }
@@ -117,7 +105,7 @@ body::before {
   }
 
   .btn-primary {
-    @apply btn bg-gradient-to-br from-primary to-secondary text-white shadow-glow hover:brightness-110 active:brightness-95;
+    @apply btn bg-primary text-white shadow-sm hover:bg-primary/90;
   }
 
   .btn-ghost {
@@ -142,15 +130,15 @@ body::before {
 
   /* Kartu yang bisa diklik: naik halus saat hover */
   .card-interactive {
-    @apply transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lift hover:border-[color:var(--c-border-strong)];
+    @apply transition-colors duration-200 hover:border-[color:var(--c-border-strong)] hover:bg-ink/[0.02];
   }
 
   .text-gradient {
-    @apply bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent;
+    @apply text-primary;
   }
 
   .page-title {
-    @apply text-2xl font-extrabold tracking-tight text-ink sm:text-3xl;
+    @apply text-2xl font-bold tracking-tight text-ink sm:text-3xl;
   }
 
   .page-lead {
