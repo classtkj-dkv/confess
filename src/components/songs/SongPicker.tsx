@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Icon } from "@/components/ui/Icon";
 import { api, ApiClientError } from "@/lib/api";
 import { useSettings } from "@/lib/firebase/useSettings";
@@ -50,6 +50,66 @@ export function SongPicker({
   const [safety, setSafety] = useState<SongSafetyInfo | null>(null);
   const [testing, setTesting] = useState(false);
   const [ctx, setCtx] = useState<AudioContext | null>(null);
+
+  // Preview cepat di daftar hasil: satu <audio> dipakai bergantian supaya
+  // beberapa lagu bisa dicoba dulu sebelum memutuskan satu.
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const previewIdRef = useRef<string | null>(null);
+  const [playingId, setPlayingId] = useState<string | null>(null);
+  const [loadingId, setLoadingId] = useState<string | null>(null);
+  const [previewError, setPreviewError] = useState("");
+
+  function stopPreview() {
+    const a = audioRef.current;
+    previewIdRef.current = null;
+    if (a) {
+      a.pause();
+      a.removeAttribute("src");
+      a.load();
+    }
+    setPlayingId(null);
+    setLoadingId(null);
+  }
+
+  function togglePreview(t: Song) {
+    const a = audioRef.current;
+    if (!a) return;
+    if (previewIdRef.current === t.id) {
+      stopPreview();
+      return;
+    }
+    setPreviewError("");
+    a.pause();
+    previewIdRef.current = t.id;
+    setPlayingId(null);
+    setLoadingId(t.id);
+    a.src = `/api/songs/preview?id=${encodeURIComponent(t.id)}`;
+    a.play().catch((err: unknown) => {
+      // AbortError = diganti lagu lain / dihentikan; itu normal, abaikan.
+      if (previewIdRef.current !== t.id) return;
+      if (err instanceof DOMException && err.name === "AbortError") return;
+      previewIdRef.current = null;
+      setLoadingId(null);
+      setPlayingId(null);
+      setPreviewError(
+        err instanceof DOMException && err.name === "NotAllowedError"
+          ? "Browser memblokir pemutaran. Ketuk ▶ sekali lagi."
+          : "Preview lagu ini tidak tersedia. Coba lagu lain."
+      );
+    });
+  }
+
+  // Hentikan preview saat pencarian berubah atau komponen ditutup.
+  useEffect(() => {
+    stopPreview();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [q]);
+  useEffect(() => {
+    const a = audioRef.current;
+    return () => {
+      a?.pause();
+    };
+  }, []);
 
   useEffect(() => {
     const term = q.trim();
@@ -294,25 +354,77 @@ export function SongPicker({
         <ul className="mt-2 max-h-64 divide-y divide-hairline overflow-y-auto rounded-xl border border-hairline bg-surface">
           {results.map((t) => (
             <li key={t.id}>
-              <button
-                type="button"
-                onClick={() => {
-                  onSong(t);
-                  setQ("");
-                  setResults([]);
-                }}
-                className="focus-ring flex w-full items-center gap-3 p-2.5 text-left hover:bg-ink/5"
+              <div
+                className={`flex items-center gap-1 pr-2 transition-colors ${
+                  playingId === t.id || loadingId === t.id ? "bg-primary/10" : "hover:bg-ink/5"
+                }`}
               >
-                <SongCover song={t} size={40} />
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-semibold text-ink">{t.title}</span>
-                  <span className="block truncate text-xs text-muted">{t.artist}</span>
-                </span>
-              </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    stopPreview();
+                    onSong(t);
+                  }}
+                  aria-label={`Pilih ${t.title} — ${t.artist}`}
+                  className="focus-ring flex min-w-0 flex-1 items-center gap-3 p-2.5 text-left"
+                >
+                  <SongCover song={t} size={40} />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-semibold text-ink">{t.title}</span>
+                    <span className="block truncate text-xs text-muted">{t.artist}</span>
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => togglePreview(t)}
+                  aria-pressed={playingId === t.id}
+                  aria-label={
+                    playingId === t.id || loadingId === t.id
+                      ? `Hentikan preview ${t.title}`
+                      : `Coba dengar preview ${t.title}`
+                  }
+                  className="focus-ring grid h-10 w-10 shrink-0 place-items-center rounded-full bg-primary/15 text-primary transition-colors hover:bg-primary/25"
+                >
+                  {loadingId === t.id ? (
+                    <span
+                      aria-hidden
+                      className="h-4 w-4 animate-spin rounded-full border-2 border-primary/30 border-t-primary"
+                    />
+                  ) : (
+                    <Icon name={playingId === t.id ? "pause" : "play"} className="h-4 w-4" />
+                  )}
+                </button>
+              </div>
             </li>
           ))}
         </ul>
       )}
+      {results.length > 0 && (
+        <p className="mt-2 text-[11px] leading-relaxed text-muted" aria-live="polite">
+          {previewError ||
+            "Ketuk ▶ untuk coba dengar preview 30 detik beberapa lagu, lalu ketuk judulnya untuk memilih."}
+        </p>
+      )}
+      <audio
+        ref={audioRef}
+        preload="none"
+        className="hidden"
+        onPlaying={() => {
+          setLoadingId(null);
+          setPlayingId(previewIdRef.current);
+        }}
+        onEnded={() => {
+          previewIdRef.current = null;
+          setPlayingId(null);
+        }}
+        onError={() => {
+          if (!previewIdRef.current) return;
+          previewIdRef.current = null;
+          setLoadingId(null);
+          setPlayingId(null);
+          setPreviewError("Preview lagu ini tidak tersedia. Coba lagu lain.");
+        }}
+      />
     </div>
   );
 }

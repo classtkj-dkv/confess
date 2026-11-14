@@ -262,3 +262,10 @@ Keputusan AI tersimpan di data privat (`confessions/{id}/moderation`). Komentar 
   saat landscape.
 - Tombol ikon header 40px di HP (target sentuh nyaman), 36px di layar lebih lebar (`.icon-btn`).
 - Tinggi yang bergantung bar URL browser HP memakai `dvh`, bukan `vh`.
+
+## Coba beberapa lagu sebelum memilih
+- Di form confess, tiap hasil pencarian lagu punya tombol ▶ untuk memutar preview 30 detik (satu lagu aktif sekaligus;
+  memutar lagu lain otomatis menghentikan yang sebelumnya). Ketuk judul untuk memilih.
+- Setelah memilih, tombol "Tes putar" tetap membuka pemutar lengkap dengan lirik. Tombol "Ganti" kembali ke daftar hasil
+  yang sama (pencarian tidak direset), jadi bisa membandingkan lagu lain tanpa mengetik ulang.
+- Preview memakai `/api/songs/preview` yang sudah ada; tidak ada pemeriksaan AI tambahan sampai lagu benar-benar dipilih.
