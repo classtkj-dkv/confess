@@ -11,6 +11,7 @@ import { checkRateLimit, peekRateLimit, RATE_LIMITS } from "@/lib/security/rateL
 import { isAiConfigured, moderateWithAI } from "@/lib/ai/moderate";
 import { checkSongSafety } from "@/lib/ai/songcheck";
 import { enforceIp } from "@/lib/security/ipWatch";
+import { assertHuman } from "@/lib/security/humanCheck";
 import { publicConfessionOf } from "@/lib/firebase/publicData";
 import { isCategoryId } from "@/lib/categories";
 import { sanitizeText } from "@/lib/security/sanitize";
@@ -60,6 +61,11 @@ export async function POST(req: NextRequest): Promise<Response> {
     const { message, category, fromName, toName, songId, songLyric } =
       validateConfessionInput(raw);
 
+    // Pernyataan (centang) wajib: pesan jujur & tanpa data pribadi orang lain.
+    if ((raw as Record<string, unknown> | null)?.agreed !== true) {
+      throw new ApiError(400, "Centang pernyataan dulu ya.", "agree-required");
+    }
+
     if (!isCategoryId(category)) {
       throw new ApiError(400, "Kategori tidak valid.");
     }
@@ -78,6 +84,9 @@ export async function POST(req: NextRequest): Promise<Response> {
     if (Array.from(message).length > maxLen) {
       throw new ApiError(400, `Confession maksimal ${maxLen.toLocaleString("id-ID")} karakter.`);
     }
+
+    // Verifikasi manusia (bila diaktifkan) SEBELUM langkah mahal (lagu/AI/database).
+    await assertHuman(raw, "confession", ipWatch.ip || undefined);
 
     // Lagu (opsional): data kanonik diambil ulang dari Deezer, klien tidak dipercaya.
     let song: { id: string; title: string; artist: string; cover: string } | null = null;

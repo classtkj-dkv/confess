@@ -14,6 +14,7 @@ import { publicCommentOf } from "@/lib/firebase/publicData";
 import { touchAdmin, writeActivity } from "@/lib/security/audit";
 import { addNotification } from "@/lib/security/notify";
 import { enforceIp } from "@/lib/security/ipWatch";
+import { assertHuman } from "@/lib/security/humanCheck";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -48,6 +49,9 @@ export async function POST(req: NextRequest): Promise<Response> {
     if (!settings.allowComments) {
       throw new ApiError(503, "Komentar sedang dinonaktifkan admin.");
     }
+
+    // Verifikasi manusia (bila diaktifkan) sebelum menyentuh kuota & database.
+    await assertHuman(raw, "comment", ipWatch.ip || undefined);
 
     const rl = await checkRateLimit({
       scope: "comment",

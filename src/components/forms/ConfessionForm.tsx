@@ -14,6 +14,7 @@ import { useToast } from "@/lib/auth/ToastProvider";
 import { MAX_CONFESSION_LENGTH } from "@/lib/validations";
 import { getCategory } from "@/lib/categories";
 import { Icon } from "@/components/ui/Icon";
+import { HUMAN_CHECK_ENABLED, HumanCheck } from "@/components/ui/HumanCheck";
 
 type Step = "compose" | "preview" | "sent";
 
@@ -35,6 +36,9 @@ export function ConfessionForm({ defaultCategory }: { defaultCategory?: string }
   const [revision, setRevision] = useState("");
   const [sentStatus, setSentStatus] = useState<"PENDING" | "PUBLISHED">("PENDING");
   const [sentReview, setSentReview] = useState("none");
+  // Verifikasi manusia (captcha): token sekali pakai, di-reset tiap percobaan kirim.
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  const [captchaReset, setCaptchaReset] = useState(0);
 
   // Nama pengirim diingat di browser ini supaya tidak perlu diketik ulang.
   useEffect(() => {
@@ -59,6 +63,10 @@ export function ConfessionForm({ defaultCategory }: { defaultCategory?: string }
       return;
     }
     if (invalid) return;
+    if (HUMAN_CHECK_ENABLED && !captchaToken) {
+      toast("warning", "Selesaikan verifikasi manusia dulu ya.");
+      return;
+    }
 
     setBusy(true);
     try {
@@ -70,6 +78,8 @@ export function ConfessionForm({ defaultCategory }: { defaultCategory?: string }
           toName: toName.trim(),
           songId: song?.id ?? "",
           songLyric: song ? lyric.trim() : "",
+          agreed: true,
+          captchaToken: captchaToken ?? "",
         },
       });
       const sentAs = res.status === "PUBLISHED" ? "PUBLISHED" : "PENDING";
@@ -120,6 +130,9 @@ export function ConfessionForm({ defaultCategory }: { defaultCategory?: string }
       }
     } finally {
       setBusy(false);
+      // Token captcha hanya berlaku sekali: minta yang baru untuk percobaan berikutnya.
+      setCaptchaToken(null);
+      setCaptchaReset((n) => n + 1);
     }
   }
 
@@ -204,6 +217,27 @@ export function ConfessionForm({ defaultCategory }: { defaultCategory?: string }
           <Icon name="image" className="h-4 w-4" />
           Atur kartu & unduh
         </CardStudioButton>
+        <label className="flex items-start gap-3 rounded-xl border border-hairline bg-surface/60 p-3.5 text-xs leading-relaxed text-muted">
+          <input
+            type="checkbox"
+            checked={agree}
+            onChange={(e) => setAgree(e.target.checked)}
+            className="mt-0.5 h-4 w-4 rounded border-hairline bg-background accent-primary"
+          />
+          <span>
+            Saya menulis dengan jujur, tanpa menyebar data pribadi orang lain, dan menyetujui{" "}
+            <Link href="/about#aturan" target="_blank" rel="noopener" className="font-semibold text-primary underline">
+              aturan komunitas
+            </Link>
+            .
+          </span>
+        </label>
+        {HUMAN_CHECK_ENABLED && (
+          <div className="rounded-xl border border-hairline bg-surface/60 p-3.5">
+            <p className="mb-2 text-xs font-semibold text-ink">Verifikasi manusia</p>
+            <HumanCheck action="confession" onToken={setCaptchaToken} resetSignal={captchaReset} />
+          </div>
+        )}
         <div className="flex gap-2">
           <button
             type="button"
@@ -217,7 +251,7 @@ export function ConfessionForm({ defaultCategory }: { defaultCategory?: string }
             type="button"
             className="btn-primary flex-1"
             onClick={submit}
-            disabled={busy}
+            disabled={busy || !agree || (HUMAN_CHECK_ENABLED && !captchaToken)}
           >
             {busy ? "Mengirim…" : "Kirim confession"}
           </button>
@@ -231,7 +265,16 @@ export function ConfessionForm({ defaultCategory }: { defaultCategory?: string }
       className="card space-y-6 p-5 sm:p-7"
       onSubmit={(e) => {
         e.preventDefault();
-        if (!invalid) setStep("preview");
+        if (invalid) return;
+        if (!category) {
+          toast("warning", "Pilih kategori dulu ya.");
+          return;
+        }
+        if (!agree) {
+          toast("warning", "Centang pernyataan kejujuran dulu ya.");
+          return;
+        }
+        setStep("preview");
       }}
     >
       {revision && (
@@ -323,7 +366,13 @@ export function ConfessionForm({ defaultCategory }: { defaultCategory?: string }
           onChange={(e) => setAgree(e.target.checked)}
           className="mt-0.5 h-4 w-4 rounded border-hairline bg-background accent-primary"
         />
-        <span>Saya menulis dengan jujur dan tanpa menyebar data pribadi orang lain.</span>
+        <span>
+          Saya menulis dengan jujur, tanpa menyebar data pribadi orang lain, dan menyetujui{" "}
+          <Link href="/about#aturan" target="_blank" rel="noopener" className="font-semibold text-primary underline">
+            aturan komunitas
+          </Link>
+          .
+        </span>
       </label>
 
       <div className="flex items-center gap-2">

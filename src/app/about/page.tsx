@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { REPORT_REASONS } from "@/lib/categories";
 import { Icon } from "@/components/ui/Icon";
+import { TutorialButton } from "@/components/onboarding/TutorialButton";
 
 export const metadata: Metadata = {
   title: "Tentang",
@@ -19,6 +20,10 @@ export default function AboutPage() {
           sekolah — tempat mengulurkan perasaan, opini, atau pengalaman tanpa
           takut dihakimi.
         </p>
+        <TutorialButton className="btn-ghost mt-4 !px-4 !py-2 text-xs">
+          <Icon name="info" className="mr-1.5 inline h-4 w-4 align-[-3px]" />
+          Lihat tutorial lagi
+        </TutorialButton>
       </header>
 
       <section className="card p-6 sm:p-7" aria-labelledby="tujuan">

@@ -7,6 +7,7 @@ import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { NotificationBell } from "@/components/notifications/NotificationBell";
 import { HistoryLink } from "@/components/history/HistoryLink";
 import { InstallPrompt } from "@/components/pwa/InstallPrompt";
+import { Onboarding } from "@/components/onboarding/Onboarding";
 import { Sidebar } from "./Sidebar";
 import { MobileNav } from "./MobileNav";
 import { SearchBar } from "./SearchBar";
@@ -93,6 +94,7 @@ export function AppShell({ children }: AppShellProps) {
         <main className="mx-auto w-full max-w-5xl flex-1 px-4 pb-28 pt-6 md:px-6 md:pt-8 lg:pb-14 2xl:max-w-6xl">
           <InstallPrompt />
           {children}
+          <Onboarding />
         </main>
         <MobileNav />
       </div>

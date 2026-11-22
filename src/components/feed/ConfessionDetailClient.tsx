@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { ConfessionCard } from "@/components/feed/ConfessionCard";
 import { Icon } from "@/components/ui/Icon";
+import { HUMAN_CHECK_ENABLED, HumanCheck } from "@/components/ui/HumanCheck";
 import { EmptyState, ErrorState } from "@/components/ui/States";
 import { CardSkeleton } from "@/components/ui/Skeletons";
 import { api, ApiClientError } from "@/lib/api";
@@ -28,6 +29,9 @@ export function ConfessionDetailClient() {
   const [commentBusy, setCommentBusy] = useState(false);
   const [commentName, setCommentName] = useState("");
   const [replyTo, setReplyTo] = useState<{ id: string; name: string } | null>(null);
+  // Verifikasi manusia (captcha) untuk komentar; widget baru muncul setelah mulai mengetik.
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  const [captchaReset, setCaptchaReset] = useState(0);
 
   // Nama komentator diingat di browser ini.
   useEffect(() => {
@@ -89,6 +93,10 @@ export function ConfessionDetailClient() {
       toast("warning", "Tulis komentar dulu ya.");
       return;
     }
+    if (HUMAN_CHECK_ENABLED && !captchaToken) {
+      toast("warning", "Selesaikan verifikasi manusia dulu ya.");
+      return;
+    }
     setCommentBusy(true);
     try {
       await api("/api/comments", {
@@ -97,6 +105,7 @@ export function ConfessionDetailClient() {
           message,
           fromName: commentName.trim(),
           parentId: replyTo?.id ?? "",
+          captchaToken: captchaToken ?? "",
         },
       });
       try {
@@ -115,6 +124,8 @@ export function ConfessionDetailClient() {
       );
     } finally {
       setCommentBusy(false);
+      setCaptchaToken(null);
+      setCaptchaReset((n) => n + 1);
     }
   }
 
@@ -180,6 +191,14 @@ export function ConfessionDetailClient() {
             placeholder={replyTo ? `Balas ${replyTo.name}…` : "Tulis komentar…"}
             className="input resize-y"
           />
+          {HUMAN_CHECK_ENABLED && /[\p{L}\p{N}]/u.test(commentText) && (
+            <HumanCheck
+              action="comment"
+              onToken={setCaptchaToken}
+              resetSignal={captchaReset}
+              className="mt-2"
+            />
+          )}
           <div className="mt-2 flex items-center justify-between gap-3">
             <input
               value={commentName}
@@ -192,7 +211,11 @@ export function ConfessionDetailClient() {
             />
             <button
               type="submit"
-              disabled={commentBusy || !/[\p{L}\p{N}]/u.test(commentText)}
+              disabled={
+                commentBusy ||
+                !/[\p{L}\p{N}]/u.test(commentText) ||
+                (HUMAN_CHECK_ENABLED && !captchaToken)
+              }
               className="btn-primary"
             >
               {commentBusy ? "Mengirim…" : "Kirim komentar"}

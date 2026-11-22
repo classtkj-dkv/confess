@@ -4,6 +4,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { NAV_ITEMS } from "./navItems";
 import { NavIcon } from "./NavIcon";
+import { Icon } from "@/components/ui/Icon";
+import { TutorialButton } from "@/components/onboarding/TutorialButton";
 
 export function Sidebar() {
   const pathname = usePathname();
@@ -34,6 +36,10 @@ export function Sidebar() {
           );
         })}
       </nav>
+      <TutorialButton className="focus-ring mb-3 flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-medium text-muted transition-colors hover:bg-ink/5 hover:text-ink">
+        <Icon name="info" className="h-4 w-4" />
+        Lihat tutorial
+      </TutorialButton>
       <p className="rounded-xl border border-hairline bg-card/60 px-3 py-2.5 text-[11px] leading-relaxed text-muted">
         Tanpa nama. Tanpa beban. Tetap jaga keamanan bersama.
       </p>

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { ConfessionForm } from "@/components/forms/ConfessionForm";
+import { TutorialButton } from "@/components/onboarding/TutorialButton";
 
 export const metadata: Metadata = {
   title: "Tulis Confess",
@@ -19,6 +20,9 @@ export default async function ConfessPage({
       <header className="space-y-2">
         <h1 className="page-title">Tulis Confess</h1>
         <p className="page-lead">Anonim, tanpa nama.</p>
+        <TutorialButton className="focus-ring rounded text-xs font-semibold text-primary underline">
+          Baru pertama kali? Lihat tutorial
+        </TutorialButton>
       </header>
       <ConfessionForm defaultCategory={category} />
     </div>

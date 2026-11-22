@@ -269,3 +269,31 @@ Keputusan AI tersimpan di data privat (`confessions/{id}/moderation`). Komentar 
 - Setelah memilih, tombol "Tes putar" tetap membuka pemutar lengkap dengan lirik. Tombol "Ganti" kembali ke daftar hasil
   yang sama (pencarian tidak direset), jadi bisa membandingkan lagu lain tanpa mengetik ulang.
 - Preview memakai `/api/songs/preview` yang sudah ada; tidak ada pemeriksaan AI tambahan sampai lagu benar-benar dipilih.
+
+## Tutorial pertama kali, persetujuan, dan verifikasi manusia (captcha)
+
+### Tutorial (onboarding)
+- Muncul otomatis **sekali per perangkat** pada kunjungan pertama (6 langkah: selamat datang, mengisi formulir 1 dan 2 dengan
+  penjelasan tiap kolom, pemeriksaan sebelum tayang, identitas dan data, fitur lainnya). Bisa **dilewati** kapan saja
+  (tombol Lewati, tombol Esc, atau "Tutup panduan"). Teks bernada formal dan hanya memakai ikon SVG (tanpa emoji).
+- Penanda disimpan di `localStorage` (`confess:onboarded:v1`); bila storage diblokir, dipakai `sessionStorage`.
+- Bisa dibuka lagi lewat "Lihat tutorial" (sidebar), "Lihat tutorial lagi" (halaman Tentang), dan tautan di halaman Tulis Confess.
+- Ramah HP: tampil sebagai bottom-sheet di layar kecil, kartu di tengah di layar besar; mendukung keyboard dan gerak minim.
+  Kode: `src/components/onboarding/Onboarding.tsx`, `src/lib/onboarding.ts`.
+
+### Centang persetujuan sebelum kirim
+- Form confess mewajibkan centang "menulis jujur, tanpa data pribadi orang lain, menyetujui aturan komunitas" sebelum
+  lanjut ke preview, dan centang yang sama tampil lagi di preview sebelum tombol Kirim.
+- Server juga menolak permintaan tanpa `agreed: true` (kode `agree-required`).
+
+### Captcha (Cloudflare Turnstile) untuk confess dan komentar
+- **Opsional & gratis.** Aktif hanya bila kedua variabel ini diisi; kosong = situs berjalan tanpa captcha:
+  - `NEXT_PUBLIC_TURNSTILE_SITE_KEY` (publik, dibaca saat **build**; setelah mengisinya, redeploy)
+  - `TURNSTILE_SECRET_KEY` (rahasia, server saja)
+- Cara: Cloudflare Dashboard → Turnstile → Add widget → tambahkan domain situs (dan `localhost` untuk uji) → salin dua kunci.
+  Untuk uji tanpa akun pakai kunci uji resmi (lihat `.env.example`).
+- Confess: widget tampil di langkah preview, tombol Kirim aktif setelah lolos. Komentar/balasan: widget muncul setelah mulai mengetik.
+- Server (`src/lib/security/humanCheck.ts`) memverifikasi token ke Cloudflare **sebelum** langkah mahal (cek lagu, moderasi AI,
+  database), sehingga bot tidak menghabiskan kuota AI. Token sekali pakai dan terikat ke aksi (`confession` / `comment`).
+  Bila layanan Cloudflare tidak terjangkau, permintaan ditolak (fail-closed) dengan pesan "coba lagi".
+- Rate limit dan anti-spam IP yang sudah ada tetap berjalan; captcha menambah lapisan, bukan menggantikan.
