@@ -23,8 +23,8 @@ const RECENT_WINDOW_MS = 30 * 60 * 1000;
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-/** Panggilan AI bisa beberapa detik; jangan sampai kena batas 10 detik bawaan. */
-export const maxDuration = 30;
+/** Cek lagu (AI musik) + moderasi AI berjalan berurutan; beri ruang cukup supaya tidak dibunuh Vercel. */
+export const maxDuration = 60;
 
 export async function POST(req: NextRequest): Promise<Response> {
   try {

@@ -94,6 +94,8 @@ export interface ChatOptions {
   user: string;
   maxTokens?: number;
   timeoutMs?: number;
+  /** Batas TOTAL semua percobaan (ms). Dijaga di bawah maxDuration route supaya fungsi tidak dibunuh Vercel. */
+  deadlineMs?: number;
   modelList?: string[];
   /** Ubah isi balasan model jadi teks mentah sebelum dikembalikan ke pemanggil. */
   extract?: (content: unknown) => string;
@@ -130,6 +132,8 @@ export function roleStatus(role: AiRole): RoleStatus {
 export interface ChatDetail {
   ok: ChatOk | null;
   error: string;
+  /** Lama total panggilan (ms), juga saat gagal. */
+  ms: number;
 }
 
 /**
@@ -144,16 +148,30 @@ export async function openRouterChat(role: AiRole, opts: ChatOptions): Promise<C
     const prefix = SETUPS[role].env;
     return {
       ok: null,
+      ms: 0,
       error: `API key AI ${role} belum diisi di environment (${prefix}_API_KEYS atau ${prefix}_API_KEY_1).`,
     };
   }
 
   const models = (opts.modelList ?? [primary, ...fallbacks]).filter(Boolean).slice(0, 3);
   const start = keys.length > 1 ? (rotate[role] ?? 0) % keys.length : 0;
+  const perTry = opts.timeoutMs ?? 12000;
+
+  // Urutan percobaan: tiap key sekali; bila hanya 1 key, coba 2x (error jaringan/5xx sering sesaat).
+  const order: number[] = [];
+  for (let n = 0; n < keys.length; n++) order.push((start + n) % keys.length);
+  if (keys.length === 1) order.push(0);
+  // Tanpa deadlineMs: perilaku lama (tiap percobaan boleh pakai timeoutMs penuh).
+  const deadline = t0 + (opts.deadlineMs ?? perTry * order.length);
 
   let last = "";
-  for (let n = 0; n < keys.length; n++) {
-    const keyIndex = (start + n) % keys.length;
+  for (let n = 0; n < order.length; n++) {
+    const keyIndex = order[n];
+    const remaining = deadline - Date.now();
+    if (remaining < 1500) {
+      last = last || "Waktu habis sebelum AI sempat membalas.";
+      break;
+    }
     try {
       const res = await fetch(ENDPOINT, {
         method: "POST",
@@ -164,56 +182,65 @@ export async function openRouterChat(role: AiRole, opts: ChatOptions): Promise<C
           "X-Title": "CONFESS",
         },
         body: JSON.stringify({
-          models,
+          model: models[0],
+          // Fallback model otomatis di sisi OpenRouter bila model utama error/limit.
+          ...(models.length > 1 ? { models } : {}),
           max_tokens: opts.maxTokens ?? 300,
+          // Model 5.x punya mode berpikir adaptif: tanpa ini token "berpikir" bisa
+          // menghabiskan max_tokens sehingga jawaban kosong / JSON terpotong.
+          ...(role === "moderation" ? { reasoning: { enabled: false, exclude: true } } : {}),
           messages: [
             { role: "system", content: opts.system },
             { role: "user", content: opts.user },
           ],
         }),
         cache: "no-store",
-        signal: AbortSignal.timeout(opts.timeoutMs ?? 12000),
+        signal: AbortSignal.timeout(Math.min(perTry, remaining)),
       });
       if (!res.ok) {
         const body = (await res.text().catch(() => "")).slice(0, 200);
         const hint =
-          res.status === 401
-            ? " (API key salah/tidak aktif)"
-            : res.status === 402
-              ? " (kredit OpenRouter habis)"
-              : res.status === 404
-                ? " (ID model tidak ditemukan)"
-                : res.status === 429
-                  ? " (kena batas permintaan)"
-                  : "";
+          res.status === 400
+            ? " (permintaan ditolak — cek ID model / parameter)"
+            : res.status === 401
+              ? " (API key salah/tidak aktif)"
+              : res.status === 402
+                ? " (kredit OpenRouter habis)"
+                : res.status === 404
+                  ? " (ID model tidak ditemukan)"
+                  : res.status === 429
+                    ? " (kena batas permintaan)"
+                    : "";
         last = `OpenRouter HTTP ${res.status}${hint}: ${body}`;
         continue; // key ini bermasalah → coba key berikutnya
       }
       const data = (await res.json()) as {
         model?: string;
         error?: { message?: string };
-        choices?: { message?: { content?: unknown } }[];
+        choices?: { finish_reason?: string; message?: { content?: unknown } }[];
       };
       if (data.error) {
         last = `OpenRouter: ${String(data.error.message ?? "error")}`.slice(0, 220);
         continue;
       }
-      const text = (opts.extract ?? extraText)(data.choices?.[0]?.message?.content);
+      const choice = data.choices?.[0];
+      const text = (opts.extract ?? extraText)(choice?.message?.content);
       if (!text.trim()) {
-        last = "Jawaban AI kosong.";
+        last = `Jawaban AI kosong (finish_reason: ${choice?.finish_reason ?? "?"}, model: ${data.model ?? models[0]}).`;
         continue;
       }
       rotate[role] = keyIndex + 1; // key ini sehat → panggilan berikut mulai dari key lain
       return {
         ok: { text, model: String(data.model ?? models[0]), keyIndex, ms: Date.now() - t0 },
         error: "",
+        ms: Date.now() - t0,
       };
     } catch (err) {
       last =
         (err as { name?: string }).name === "TimeoutError"
-          ? `AI tidak membalas dalam ${(opts.timeoutMs ?? 12000) / 1000} detik.`
+          ? `AI tidak membalas dalam ${Math.round(perTry / 1000)} detik.`
           : `Gagal menghubungi OpenRouter: ${String(err).slice(0, 120)}`;
     }
   }
-  return { ok: null, error: last };
+  return { ok: null, error: last, ms: Date.now() - t0 };
 }

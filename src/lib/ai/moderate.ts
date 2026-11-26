@@ -80,10 +80,12 @@ export async function moderateDetailed(input: AiInput): Promise<AiDetailed> {
       lagu: input.songLabel,
       kutipan_lirik: input.lyric,
     }),
-    maxTokens: 300,
-    timeoutMs: 12000,
+    maxTokens: 600,
+    timeoutMs: 14000,
+    // Total di bawah maxDuration route supaya Vercel tidak membunuh request.
+    deadlineMs: 22000,
   });
-  if (!chat.ok) return { result: null, error: chat.error, ms: 0 };
+  if (!chat.ok) return { result: null, error: chat.error, ms: chat.ms };
   const ok = chat.ok;
   const parsed = parseVerdict(ok.text);
   if (!parsed) {
@@ -99,6 +101,6 @@ export async function moderateDetailed(input: AiInput): Promise<AiDetailed> {
 /** Dipakai route confession. Gagal → null (moderasi manual), tapi alasannya dicatat di log server. */
 export async function moderateWithAI(input: AiInput): Promise<AiResult | null> {
   const r = await moderateDetailed(input);
-  if (!r.result && r.error) console.error(`[ai-moderation] ${r.error}`);
+  if (!r.result && r.error) console.error(`[ai-moderation] ${r.error} (${r.ms}ms)`);
   return r.result;
 }
