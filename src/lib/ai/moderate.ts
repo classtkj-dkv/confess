@@ -80,10 +80,10 @@ export async function moderateDetailed(input: AiInput): Promise<AiDetailed> {
       lagu: input.songLabel,
       kutipan_lirik: input.lyric,
     }),
-    maxTokens: 600,
-    timeoutMs: 14000,
+    maxTokens: 2000, // lega: model gratis sering "berpikir" dulu sebelum menjawab
+    timeoutMs: 20000,
     // Total di bawah maxDuration route supaya Vercel tidak membunuh request.
-    deadlineMs: 22000,
+    deadlineMs: 28000,
   });
   if (!chat.ok) return { result: null, error: chat.error, ms: chat.ms };
   const ok = chat.ok;

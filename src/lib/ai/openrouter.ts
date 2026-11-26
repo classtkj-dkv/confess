@@ -17,10 +17,17 @@
  */
 const ENDPOINT = "https://openrouter.ai/api/v1/chat/completions";
 
-const DEFAULT_MODERATION_MODEL = "anthropic/claude-sonnet-5.5";
-const DEFAULT_MODERATION_FALLBACK = "anthropic/claude-sonnet-5";
-const DEFAULT_MUSIC_MODEL = "openai/gpt-4.1-mini";
-const DEFAULT_MUSIC_FALLBACK = "openai/gpt-4o-mini";
+// MODE TES (gratis). Urutan: DeepSeek V4 Flash (free) → versi 0731-nya → "openrouter/free"
+// (router OpenRouter yang otomatis memilih model gratis yang sedang hidup, jadi tetap
+// jalan walau slug tertentu dipensiun). OpenRouter hanya menerima maksimal 3 model.
+// Untuk produksi berbayar, set env OPENROUTER_MODEL=anthropic/claude-sonnet-5.5 (dan
+// OPENROUTER_FALLBACK_MODELS=anthropic/claude-sonnet-5) / MUSIC_AI_MODEL=openai/gpt-4.1-mini.
+const FREE_PRIMARY = "deepseek/deepseek-v4-flash:free";
+const FREE_FALLBACKS = "deepseek/deepseek-v4-flash-0731:free,openrouter/free";
+const DEFAULT_MODERATION_MODEL = FREE_PRIMARY;
+const DEFAULT_MODERATION_FALLBACK = FREE_FALLBACKS;
+const DEFAULT_MUSIC_MODEL = FREE_PRIMARY;
+const DEFAULT_MUSIC_FALLBACK = FREE_FALLBACKS;
 
 export type AiRole = "moderation" | "music";
 
@@ -188,7 +195,11 @@ export async function openRouterChat(role: AiRole, opts: ChatOptions): Promise<C
           max_tokens: opts.maxTokens ?? 300,
           // Model 5.x punya mode berpikir adaptif: tanpa ini token "berpikir" bisa
           // menghabiskan max_tokens sehingga jawaban kosong / JSON terpotong.
-          ...(role === "moderation" ? { reasoning: { enabled: false, exclude: true } } : {}),
+          // Hanya untuk Claude & DeepSeek V4 (keduanya mendukung "reasoning off"); model lain
+          // (mis. gpt-oss) wajib berpikir dan bisa menolak parameter ini.
+          ...(role === "moderation" && /^(anthropic|deepseek)\//.test(models[0])
+            ? { reasoning: { enabled: false, exclude: true } }
+            : {}),
           messages: [
             { role: "system", content: opts.system },
             { role: "user", content: opts.user },
